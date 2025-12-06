@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import StudyList from './components/StudyList';
 import ViewerCanvas from './components/ViewerCanvas';
 import SeriesSelector from './components/SeriesSelector';
@@ -7,7 +7,7 @@ import MeasurementPanel from './components/MeasurementPanel';
 import SegmentationPanel from './components/SegmentationPanel';
 import AiAssistantPanel from './components/AiAssistantPanel';
 import { TOOLS, WL_PRESETS, MOCK_SEGMENTATION_DATA } from './constants';
-import { Study, Series, ToolMode, ConnectionType, DicomWebConfig, Measurement, SegmentationLayer } from './types';
+import { Study, Series, ToolMode, ConnectionType, DicomWebConfig, Measurement, SegmentationLayer, ViewerHandle } from './types';
 import { fetchDicomWebSeries } from './services/dicomService';
 import { ChevronLeft, Ruler, Activity, Sparkles } from 'lucide-react';
 
@@ -23,6 +23,9 @@ const App: React.FC = () => {
   const [studySeries, setStudySeries] = useState<Series[]>([]);
   const [activeSeries, setActiveSeries] = useState<Series | null>(null);
   const [activeTool, setActiveTool] = useState<ToolMode>(ToolMode.SCROLL);
+  
+  // Viewer Ref for Screenshots
+  const viewerRef = useRef<ViewerHandle>(null);
   
   // Lifted Viewer State
   const [sliceIndex, setSliceIndex] = useState(0);
@@ -93,6 +96,10 @@ const App: React.FC = () => {
   const handleMeasurementDelete = (id: string) => {
     setMeasurements(prev => prev.filter(m => m.id !== id));
     if (activeMeasurementId === id) setActiveMeasurementId(null);
+  };
+  
+  const handleCaptureScreen = () => {
+      return viewerRef.current?.captureScreenshot() || null;
   };
 
   // MODE: DASHBOARD (Study List)
@@ -173,6 +180,7 @@ const App: React.FC = () => {
           {/* Left: Viewport & Series Strip */}
           <div className="flex-1 flex flex-col relative">
               <ViewerCanvas 
+                ref={viewerRef}
                 series={activeSeries} 
                 activeTool={activeTool}
                 dicomConfig={dicomConfig}
@@ -273,7 +281,7 @@ const App: React.FC = () => {
                  )}
                  {activeRightTab === 'ai' && (
                      <div className="absolute inset-0">
-                         <AiAssistantPanel />
+                         <AiAssistantPanel onCaptureScreen={handleCaptureScreen} />
                      </div>
                  )}
               </div>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Study, ConnectionType, DicomWebConfig, DiagnosticStep } from '../types';
 import { searchDicomWebStudies, runConnectionDiagnostics } from '../services/dicomService';
@@ -89,13 +90,29 @@ const StudyList: React.FC<StudyListProps> = ({
       { id: '2-connect', name: 'Server Access (CORS)', status: 'PENDING' },
       { id: '3-qido', name: 'Query Study List (QIDO-RS)', status: 'PENDING' },
       { id: '4-wado', name: 'Fetch Reference Image (WADO-RS)', status: 'PENDING' },
-      { id: '5-integrity', name: 'Series Data Integrity', status: 'PENDING' }
+      { id: '5-integrity', name: 'Series Data Integrity', status: 'PENDING' },
+      { id: '6-canvas', name: 'Canvas Imaging Capability', status: 'PENDING' }
     ];
     setDiagnosticSteps(steps);
 
     const updateStep = (id: string, status: DiagnosticStep['status'], message?: string) => {
       setDiagnosticSteps(prev => prev.map(s => s.id === id ? { ...s, status, message } : s));
     };
+
+    // New Unit Test: Browser Canvas Check
+    try {
+        updateStep('6-canvas', 'RUNNING');
+        const testCanvas = document.createElement('canvas');
+        testCanvas.width = 10; testCanvas.height = 10;
+        const url = testCanvas.toDataURL();
+        if (url && url.startsWith('data:image')) {
+            updateStep('6-canvas', 'PASS', 'Browser Supports Canvas Capture');
+        } else {
+            updateStep('6-canvas', 'FAIL', 'Canvas Capture Failed');
+        }
+    } catch (e) {
+        updateStep('6-canvas', 'FAIL', 'Canvas API Unavailable');
+    }
 
     const success = await runConnectionDiagnostics(dicomConfig, updateStep);
     setDiagnosticRunning(false);

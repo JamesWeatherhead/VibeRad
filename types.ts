@@ -78,6 +78,11 @@ export interface ViewportState {
   windowCenter: number;
 }
 
+// Viewer Capability Interface
+export interface ViewerHandle {
+  captureScreenshot: () => string | null;
+}
+
 // Segmentation Types
 
 export interface Segment {
@@ -101,4 +106,5 @@ export interface ChatMessage {
   text: string;
   isThinking?: boolean;
   sources?: Array<{ uri: string; title: string }>;
+  hasAttachment?: boolean;
 }

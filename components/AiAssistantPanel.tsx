@@ -1,14 +1,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Sparkles, Globe, Upload, Image as ImageIcon, BrainCircuit, X } from 'lucide-react';
+import { Bot, Send, Sparkles, Globe, Upload, Image as ImageIcon, BrainCircuit, X, Camera } from 'lucide-react';
 import { streamChatResponse, analyzeUploadedImage } from '../services/aiService';
 import { ChatMessage } from '../types';
 
 interface AiAssistantPanelProps {
-  // Can accept context props later
+  onCaptureScreen?: () => string | null;
 }
 
-const AiAssistantPanel: React.FC<AiAssistantPanelProps> = () => {
+const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen }) => {
   const [activeTab, setActiveTab] = useState<'chat' | 'vision'>('chat');
   
   // Chat State
@@ -19,6 +19,9 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = () => {
   const [isThinking, setIsThinking] = useState(false);
   const [mode, setMode] = useState<'standard' | 'thinking' | 'search'>('standard');
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Chat Attachments
+  const [attachedScreenshot, setAttachedScreenshot] = useState<string | null>(null);
 
   // Vision State
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -34,13 +37,32 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = () => {
     }
   }, [messages, analysisResult]);
 
-  const handleSendMessage = async () => {
-    if (!input.trim() || isThinking) return;
+  const handleCapture = () => {
+    if (onCaptureScreen) {
+        const screenshot = onCaptureScreen();
+        if (screenshot) {
+            setAttachedScreenshot(screenshot);
+        }
+    }
+  };
 
-    const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: input };
+  const handleSendMessage = async () => {
+    if ((!input.trim() && !attachedScreenshot) || isThinking) return;
+
+    const userMsg: ChatMessage = { 
+        id: Date.now().toString(), 
+        role: 'user', 
+        text: input,
+        hasAttachment: !!attachedScreenshot
+    };
+    
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsThinking(true);
+    
+    // Store temp reference to image before clearing state
+    const imageToSend = attachedScreenshot;
+    setAttachedScreenshot(null);
 
     const useThinking = mode === 'thinking';
     const useSearch = mode === 'search';
@@ -51,7 +73,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = () => {
 
     let fullText = '';
     
-    await streamChatResponse(userMsg.text, useThinking, useSearch, (chunk, sources) => {
+    await streamChatResponse(userMsg.text, useThinking, useSearch, imageToSend, (chunk, sources) => {
         fullText += chunk;
         setMessages(prev => prev.map(m => {
             if (m.id === botMsgId) {
@@ -128,6 +150,12 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = () => {
                                 ? 'bg-purple-900/40 text-purple-100 border border-purple-700/50' 
                                 : 'bg-slate-800 text-slate-200 border border-slate-700'
                             }`}>
+                                {m.hasAttachment && (
+                                    <div className="mb-2 flex items-center gap-1 text-xs text-purple-300 bg-purple-950/50 px-2 py-1 rounded">
+                                        <ImageIcon className="w-3 h-3" />
+                                        <span>Image Attached</span>
+                                    </div>
+                                )}
                                 {m.isThinking && !m.text && (
                                     <div className="flex items-center gap-2 text-xs text-slate-400 italic mb-1">
                                         <BrainCircuit className="w-3 h-3 animate-pulse" /> Thinking...
@@ -177,22 +205,47 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = () => {
                             <Globe className="w-3 h-3" /> Web Search
                         </button>
                     </div>
-                    <div className="relative">
-                        <input
-                            className="w-full bg-slate-950 border border-slate-700 rounded pr-10 pl-3 py-2 text-sm focus:border-purple-500 focus:outline-none text-slate-200"
-                            placeholder={mode === 'thinking' ? "Ask complex question..." : "Ask a question..."}
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                            disabled={isThinking}
-                        />
+
+                    {/* Screenshot Preview */}
+                    {attachedScreenshot && (
+                        <div className="relative inline-block border border-purple-500 rounded overflow-hidden">
+                            <img src={attachedScreenshot} alt="Snapshot" className="h-16 w-auto opacity-80" />
+                            <button 
+                                onClick={() => setAttachedScreenshot(null)}
+                                className="absolute top-0 right-0 bg-black/50 hover:bg-red-500 text-white p-0.5"
+                            >
+                                <X className="w-3 h-3" />
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="relative flex gap-2">
                         <button 
-                            onClick={handleSendMessage}
-                            disabled={!input.trim() || isThinking}
-                            className="absolute right-2 top-2 p-0.5 text-purple-500 hover:text-purple-400 disabled:opacity-50"
+                            onClick={handleCapture}
+                            disabled={!onCaptureScreen}
+                            className={`p-2 rounded border transition-colors ${attachedScreenshot ? 'bg-purple-900 border-purple-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
+                            title="Attach Viewer Snapshot"
                         >
-                            <Send className="w-4 h-4" />
+                            <Camera className="w-4 h-4" />
                         </button>
+
+                        <div className="relative flex-1">
+                            <input
+                                className="w-full bg-slate-950 border border-slate-700 rounded pr-10 pl-3 py-2 text-sm focus:border-purple-500 focus:outline-none text-slate-200"
+                                placeholder={mode === 'thinking' ? "Ask complex question..." : "Ask a question..."}
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                disabled={isThinking}
+                            />
+                            <button 
+                                onClick={handleSendMessage}
+                                disabled={(!input.trim() && !attachedScreenshot) || isThinking}
+                                className="absolute right-2 top-2 p-0.5 text-purple-500 hover:text-purple-400 disabled:opacity-50"
+                            >
+                                <Send className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -61,23 +61,50 @@ export const generateRadiologyReport = async (
   }
 };
 
-// --- CHAT WITH THINKING & SEARCH ---
+// --- CHAT WITH THINKING & SEARCH & VISION ---
 
 export const streamChatResponse = async (
   message: string,
   useThinking: boolean,
   useSearch: boolean,
+  imageBase64: string | null,
   onChunk: (text: string, sources?: any[]) => void
 ) => {
   try {
     let model = 'gemini-2.5-flash';
     let config: any = {};
     let tools: any[] = [];
+    let contents: any = message;
 
-    if (useThinking) {
+    // Construct Payload
+    if (imageBase64) {
+      // Multimodal Request
+      // Remove data prefix if present
+      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+      
+      contents = {
+        parts: [
+          {
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: cleanBase64
+            }
+          },
+          { text: message }
+        ]
+      };
+      
+      // Upgrade to Pro if thinking is requested, otherwise Flash is fine for vision
+      if (useThinking) {
+        model = 'gemini-3-pro-preview';
+        config = {
+            thinkingConfig: { thinkingBudget: 32768 }
+        };
+      }
+    } else if (useThinking) {
       model = 'gemini-3-pro-preview';
       config = {
-        thinkingConfig: { thinkingBudget: 32768 } // Max thinking budget
+        thinkingConfig: { thinkingBudget: 32768 }
       };
     } else if (useSearch) {
       model = 'gemini-2.5-flash';
@@ -86,7 +113,7 @@ export const streamChatResponse = async (
 
     const responseStream = await ai.models.generateContentStream({
       model: model,
-      contents: message,
+      contents: contents,
       config: {
         ...config,
         tools: tools.length > 0 ? tools : undefined

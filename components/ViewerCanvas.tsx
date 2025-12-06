@@ -1,5 +1,6 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { Series, ToolMode, ViewportState, Point, Measurement, DicomWebConfig, SegmentationLayer } from '../types';
+
+import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
+import { Series, ToolMode, ViewportState, Point, Measurement, DicomWebConfig, SegmentationLayer, ViewerHandle } from '../types';
 import { DEFAULT_VIEWPORT_STATE } from '../constants';
 import { fetchDicomImageBlob } from '../services/dicomService';
 import { Loader2, AlertTriangle } from 'lucide-react';
@@ -22,7 +23,7 @@ interface ViewerCanvasProps {
   segmentationLayer: SegmentationLayer;
 }
 
-const ViewerCanvas: React.FC<ViewerCanvasProps> = ({ 
+const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({ 
   series, 
   activeTool, 
   dicomConfig, 
@@ -34,7 +35,7 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
   onMeasurementUpdate,
   activeMeasurementId,
   segmentationLayer
-}) => {
+}, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -54,6 +55,17 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [lastDrawPoint, setLastDrawPoint] = useState<Point | null>(null);
   const [draftMeasurement, setDraftMeasurement] = useState<Measurement | null>(null);
+
+  // Expose Screenshot Capability
+  useImperativeHandle(ref, () => ({
+    captureScreenshot: () => {
+      if (canvasRef.current) {
+        // Return high-quality JPEG
+        return canvasRef.current.toDataURL('image/jpeg', 0.9);
+      }
+      return null;
+    }
+  }));
 
   // 1. Reset Viewport on Series Change
   useEffect(() => {
@@ -443,6 +455,6 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
       </div>
     </div>
   );
-};
+});
 
 export default ViewerCanvas;
