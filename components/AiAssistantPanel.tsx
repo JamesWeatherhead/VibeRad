@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Sparkles, Globe, Upload, Image as ImageIcon, BrainCircuit, X, Camera } from 'lucide-react';
+import { Bot, Send, Sparkles, Globe, Upload, Image as ImageIcon, BrainCircuit, X, Camera, FileText } from 'lucide-react';
 import { streamChatResponse, analyzeUploadedImage } from '../services/aiService';
 import { ChatMessage } from '../types';
 
@@ -257,10 +257,10 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen }) 
                 {!selectedImage ? (
                     <div className="border-2 border-dashed border-slate-700 rounded-lg p-6 flex flex-col items-center justify-center text-slate-500 hover:border-purple-500 hover:bg-slate-900 transition-colors cursor-pointer relative h-48">
                         <Upload className="w-8 h-8 mb-2" />
-                        <span className="text-xs">Click to Upload Image</span>
+                        <span className="text-xs text-center">Click to Upload Image <br/>or DICOM File</span>
                         <input 
                             type="file" 
-                            accept="image/*"
+                            accept="image/*,.dcm,application/dicom"
                             onChange={handleImageSelect}
                             className="absolute inset-0 opacity-0 cursor-pointer"
                         />
@@ -268,7 +268,17 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen }) 
                 ) : (
                     <div className="space-y-4">
                         <div className="relative rounded-lg overflow-hidden border border-slate-700 bg-black">
-                            <img src={imagePreview!} alt="Preview" className="w-full object-contain max-h-48" />
+                            {/* Intelligent Preview: Show IMG if image type, else show File Icon */}
+                            {selectedImage.type.startsWith('image/') ? (
+                                <img src={imagePreview!} alt="Preview" className="w-full object-contain max-h-48" />
+                            ) : (
+                                <div className="h-48 flex flex-col items-center justify-center bg-slate-900 text-slate-400">
+                                    <FileText className="w-12 h-12 mb-2" />
+                                    <span className="text-sm font-mono">{selectedImage.name}</span>
+                                    <span className="text-xs text-slate-600 uppercase mt-1">DICOM / Raw File</span>
+                                </div>
+                            )}
+                            
                             <button 
                                 onClick={() => { setSelectedImage(null); setImagePreview(null); }}
                                 className="absolute top-2 right-2 p-1 bg-black/50 rounded-full hover:bg-red-500 text-white"

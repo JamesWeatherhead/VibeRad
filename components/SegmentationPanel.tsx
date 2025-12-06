@@ -29,6 +29,7 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({ layer, onChange, 
 
   const setActiveSegment = (id: number) => {
     onChange({ ...layer, activeSegmentId: id });
+    // Automatically switch to Brush tool when selecting a segment to paint
     if (activeTool !== ToolMode.BRUSH) {
         onSelectTool(ToolMode.BRUSH);
     }
@@ -46,7 +47,7 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({ layer, onChange, 
             <button 
                 onClick={toggleGlobalVisibility}
                 className={`p-1.5 rounded transition-colors ${layer.isVisible ? 'text-emerald-400 bg-emerald-950' : 'text-slate-500 hover:text-slate-300'}`}
-                title="Toggle Visibility"
+                title={layer.isVisible ? "Hide Segmentation Layer" : "Show Segmentation Layer"}
             >
                 {layer.isVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
             </button>
@@ -73,13 +74,13 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({ layer, onChange, 
             <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
                     <Settings2 className="w-3 h-3" />
-                    Opacity
+                    Global Opacity
                 </span>
                 <span className="text-xs font-mono text-slate-400">{(layer.opacity * 100).toFixed(0)}%</span>
             </div>
             <input 
                 type="range" 
-                min="0" max="1" step="0.1" 
+                min="0" max="1" step="0.05" 
                 value={layer.opacity}
                 onChange={handleOpacityChange}
                 className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
@@ -89,8 +90,9 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({ layer, onChange, 
 
       {/* Segments List */}
       <div className="flex-1 overflow-y-auto">
-         <div className="px-4 py-2 text-xs font-bold text-slate-500 uppercase bg-slate-950 sticky top-0 border-b border-slate-800">
-            Segments Palette
+         <div className="px-4 py-2 text-xs font-bold text-slate-500 uppercase bg-slate-950 sticky top-0 border-b border-slate-800 flex justify-between items-center">
+            <span>Segments Palette</span>
+            <span className="text-[10px] text-slate-600 font-normal">{layer.segments.length} items</span>
          </div>
          
          <div className="divide-y divide-slate-800/50">
@@ -108,7 +110,8 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({ layer, onChange, 
                     >
                         <div 
                             onClick={(e) => toggleSegment(e, seg.id)}
-                            className="cursor-pointer"
+                            className="cursor-pointer p-1 -ml-1 rounded hover:bg-slate-800"
+                            title={seg.isVisible ? "Hide Segment" : "Show Segment"}
                         >
                             {seg.isVisible 
                                 ? <Eye className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-400' : 'text-slate-400'}`} /> 
@@ -116,7 +119,7 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({ layer, onChange, 
                             }
                         </div>
                         
-                        <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: `rgb(${seg.color.join(',')})` }} />
+                        <div className="w-3 h-3 rounded-full shadow-sm ring-1 ring-white/10" style={{ backgroundColor: `rgb(${seg.color.join(',')})` }} />
                         
                         <div className={`flex-1 min-w-0 text-sm font-medium truncate ${isActive ? 'text-white' : 'text-slate-400'}`}>
                             {seg.label}
@@ -131,7 +134,7 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({ layer, onChange, 
       
       {/* Footer Info */}
       <div className="p-3 bg-slate-900 border-t border-slate-800 text-[10px] text-slate-500 text-center">
-         Select a label to paint
+         Select a label to paint on slices
       </div>
     </div>
   );
