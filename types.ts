@@ -51,7 +51,8 @@ export enum ToolMode {
   ZOOM = 'ZOOM',
   SCROLL = 'SCROLL',
   MEASURE = 'MEASURE',
-  BRUSH = 'BRUSH'
+  BRUSH = 'BRUSH',
+  ERASER = 'ERASER'
 }
 
 export interface Point {
@@ -83,6 +84,13 @@ export interface ViewerHandle {
   captureScreenshot: () => string | null;
 }
 
+// Cursor Context for AI
+export interface CursorContext {
+  seriesInstanceUID: string;
+  frameIndex: number;
+  activeMeasurementId: string | null;
+}
+
 // Segmentation Types
 
 export interface Segment {
@@ -97,6 +105,7 @@ export interface SegmentationLayer {
   isVisible: boolean;
   activeSegmentId: number | null; // The segment currently being drawn
   segments: Segment[];
+  brushSize: number;
 }
 
 // AI Types
@@ -107,4 +116,5 @@ export interface ChatMessage {
   isThinking?: boolean;
   sources?: Array<{ uri: string; title: string }>;
   hasAttachment?: boolean;
+  suggestions?: string[]; // Dynamic follow-up suggestions
 }

@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { SegmentationLayer, Segment, ToolMode } from '../types';
-import { Eye, EyeOff, Layers, Settings2, Activity, Brush, MousePointer2 } from 'lucide-react';
+import { Eye, EyeOff, Layers, Settings2, Activity, Brush, MousePointer2, Circle } from 'lucide-react';
 
 interface SegmentationPanelProps {
   layer: SegmentationLayer;
@@ -83,6 +84,21 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({ layer, onChange, 
                 min="0" max="1" step="0.05" 
                 value={layer.opacity}
                 onChange={handleOpacityChange}
+                className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500 mb-4"
+            />
+
+            <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
+                    <Circle className="w-3 h-3" />
+                    Brush Size
+                </span>
+                <span className="text-xs font-mono text-slate-400">{layer.brushSize}px</span>
+            </div>
+            <input 
+                type="range" 
+                min="5" max="50" step="1" 
+                value={layer.brushSize}
+                onChange={(e) => onChange({ ...layer, brushSize: parseInt(e.target.value) })}
                 className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
             />
          </div>

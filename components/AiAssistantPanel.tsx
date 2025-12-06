@@ -1,320 +1,226 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Sparkles, Globe, Upload, Image as ImageIcon, BrainCircuit, X, Camera, FileText } from 'lucide-react';
-import { streamChatResponse, analyzeUploadedImage } from '../services/aiService';
-import { ChatMessage } from '../types';
+import { Bot, Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, MessageSquarePlus, RefreshCw } from 'lucide-react';
+import { streamChatResponse, generateFollowUpQuestions } from '../services/aiService';
+import { ChatMessage, CursorContext } from '../types';
 
 interface AiAssistantPanelProps {
   onCaptureScreen?: () => string | null;
+  studyMetadata?: {
+    studyId: string;
+    patientName: string;
+    description: string;
+    modality: string;
+  };
+  cursor?: CursorContext;
+  onJumpToSlice?: (index: number) => void;
 }
 
-const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen }) => {
-  const [activeTab, setActiveTab] = useState<'chat' | 'vision'>('chat');
-  
-  // Chat State
+// --- MARKDOWN RENDERER ---
+const parseInline = (text: string): React.ReactNode[] => {
+    const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
+    return parts.map((part, index) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+            return <strong key={index} className="font-bold text-purple-100">{part.slice(2, -2)}</strong>;
+        }
+        if (part.startsWith('`') && part.endsWith('`')) {
+            return <code key={index} className="bg-black/30 px-1 rounded text-xs font-mono text-purple-300 border border-purple-500/20">{part.slice(1, -1)}</code>;
+        }
+        return part;
+    });
+};
+
+const MarkdownText: React.FC<{ content: string }> = ({ content }) => {
+  const lines = content.split('\n');
+  const elements: React.ReactNode[] = [];
+  let inList = false;
+  let listItems: React.ReactNode[] = [];
+
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+    const isBullet = trimmed.startsWith('* ') || trimmed.startsWith('- ') || trimmed.startsWith('• ');
+    const isHeader3 = trimmed.startsWith('### ');
+    const isHeader2 = trimmed.startsWith('## ');
+
+    if (isBullet) {
+        if (!inList) inList = true;
+        const text = trimmed.replace(/^[*•-]\s+/, '');
+        listItems.push(
+            <li key={`li-${i}`} className="mb-1 pl-1 leading-relaxed text-slate-300">
+                <span className="mr-2 text-purple-400">•</span>
+                {parseInline(text)}
+            </li>
+        );
+    } else {
+        if (inList) {
+            elements.push(<ul key={`ul-${i}`} className="mb-3 ml-2 space-y-1">{listItems}</ul>);
+            listItems = [];
+            inList = false;
+        }
+        if (trimmed === '') {
+            elements.push(<div key={`br-${i}`} className="h-2" />);
+        } else if (isHeader2 || isHeader3) {
+            const text = trimmed.replace(/^#+\s+/, '');
+            elements.push(<h3 key={`h-${i}`} className="text-sm font-bold text-white mt-4 mb-2 border-b border-purple-500/30 pb-1">{text}</h3>);
+        } else {
+            elements.push(<p key={`p-${i}`} className="mb-2 leading-relaxed text-slate-200">{parseInline(line)}</p>);
+        }
+    }
+  });
+
+  if (inList) elements.push(<ul key={`ul-end`} className="mb-3 ml-2 space-y-1">{listItems}</ul>);
+  return <div className="text-sm">{elements}</div>;
+};
+
+const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, studyMetadata, cursor, onJumpToSlice }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { id: 'welcome', role: 'model', text: 'Hello. I am your Radiology Assistant. You can ask me medical questions, request Search data, or enable Deep Thinking for complex cases.' }
   ]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
+  const [currentSuggestions, setCurrentSuggestions] = useState<string[]>([
+    "Differential diagnosis for this appearance?",
+    "Key findings in this region?",
+    "Recommendations for follow-up?"
+  ]);
   const [mode, setMode] = useState<'standard' | 'thinking' | 'search'>('standard');
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  
-  // Chat Attachments
   const [attachedScreenshot, setAttachedScreenshot] = useState<string | null>(null);
 
-  // Vision State
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imagePrompt, setImagePrompt] = useState('Analyze this medical image for anomalies.');
-  const [analysisResult, setAnalysisResult] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-
-  // Auto-scroll chat
   useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+  }, [messages]);
+
+  useEffect(() => {
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role === 'model' && !lastMsg.isThinking && messages.length > 1) {
+        const lastUserMsg = messages[messages.length - 2];
+        if (lastUserMsg.role === 'user') {
+            setIsGeneratingSuggestions(true);
+            generateFollowUpQuestions(lastUserMsg.text, lastMsg.text)
+                .then(suggs => { if (suggs.length > 0) setCurrentSuggestions(suggs); })
+                .finally(() => setIsGeneratingSuggestions(false));
+        }
     }
-  }, [messages, analysisResult]);
+  }, [messages.length, isThinking]);
 
   const handleCapture = () => {
     if (onCaptureScreen) {
         const screenshot = onCaptureScreen();
-        if (screenshot) {
-            setAttachedScreenshot(screenshot);
-        }
+        if (screenshot) setAttachedScreenshot(screenshot);
     }
   };
 
-  const handleSendMessage = async () => {
-    if ((!input.trim() && !attachedScreenshot) || isThinking) return;
+  const handleSendMessage = async (text: string = input) => {
+    if ((!text.trim() && !attachedScreenshot) || isThinking) return;
 
     const userMsg: ChatMessage = { 
-        id: Date.now().toString(), 
-        role: 'user', 
-        text: input,
-        hasAttachment: !!attachedScreenshot
+        id: Date.now().toString(), role: 'user', text: text, hasAttachment: !!attachedScreenshot
     };
-    
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsThinking(true);
+    setCurrentSuggestions([]);
     
-    // Store temp reference to image before clearing state
     const imageToSend = attachedScreenshot;
     setAttachedScreenshot(null);
 
-    const useThinking = mode === 'thinking';
-    const useSearch = mode === 'search';
+    let promptToSend = userMsg.text;
+    if (mode === 'search' && studyMetadata) {
+        promptToSend = `Context: Patient Scan (${studyMetadata.modality}, ${studyMetadata.description})`;
+        if (cursor) promptToSend += ` (Slice: ${cursor.frameIndex + 1})`;
+        promptToSend += `. Question: ${userMsg.text}`;
+    }
 
-    // Placeholder for stream
     const botMsgId = (Date.now() + 1).toString();
-    setMessages(prev => [...prev, { id: botMsgId, role: 'model', text: '', isThinking: useThinking }]);
+    setMessages(prev => [...prev, { id: botMsgId, role: 'model', text: '', isThinking: mode === 'thinking' }]);
 
     let fullText = '';
-    
-    await streamChatResponse(userMsg.text, useThinking, useSearch, imageToSend, (chunk, sources) => {
+    await streamChatResponse(promptToSend, mode === 'thinking', mode === 'search', imageToSend, (chunk, sources, toolCalls) => {
+        // Handle Tool Calls (Navigation)
+        if (toolCalls && onJumpToSlice) {
+            toolCalls.forEach(call => {
+                if (call.name === 'set_cursor_frame') {
+                    const idx = Math.round(call.args.index);
+                    if (!isNaN(idx)) onJumpToSlice(idx);
+                }
+            });
+        }
+        
         fullText += chunk;
-        setMessages(prev => prev.map(m => {
-            if (m.id === botMsgId) {
-                return { ...m, text: fullText, sources: sources || m.sources };
-            }
-            return m;
-        }));
+        setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: fullText, sources: sources || m.sources } : m));
     });
 
     setIsThinking(false);
   };
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-        const file = e.target.files[0];
-        setSelectedImage(file);
-        setImagePreview(URL.createObjectURL(file));
-        setAnalysisResult('');
-    }
-  };
-
-  const handleAnalyzeImage = async () => {
-      if (!selectedImage || isAnalyzing) return;
-      
-      setIsAnalyzing(true);
-      setAnalysisResult(''); // clear previous
-      
-      let fullText = '';
-      await analyzeUploadedImage(selectedImage, imagePrompt, (chunk) => {
-          fullText += chunk;
-          setAnalysisResult(fullText);
-      });
-      
-      setIsAnalyzing(false);
-  };
-
   return (
-    <div className="w-80 bg-slate-950 border-l border-slate-800 flex flex-col h-full">
-      {/* Header */}
-      <div className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between">
+    <div className="flex flex-col h-full bg-slate-950">
+      <div className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2 text-slate-100 font-bold">
-          <Sparkles className="w-4 h-4 text-purple-400" />
-          <span>AI Assistant</span>
+          <Sparkles className="w-4 h-4 text-purple-400" /> <span>AI Assistant</span>
         </div>
       </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-slate-800 bg-slate-900/50">
-        <button 
-           onClick={() => setActiveTab('chat')}
-           className={`flex-1 py-2 text-xs font-bold uppercase flex items-center justify-center gap-2 ${activeTab === 'chat' ? 'text-purple-400 bg-slate-800 border-b-2 border-purple-500' : 'text-slate-500'}`}
-        >
-            <Bot className="w-3 h-3" /> Chat
-        </button>
-        <button 
-           onClick={() => setActiveTab('vision')}
-           className={`flex-1 py-2 text-xs font-bold uppercase flex items-center justify-center gap-2 ${activeTab === 'vision' ? 'text-purple-400 bg-slate-800 border-b-2 border-purple-500' : 'text-slate-500'}`}
-        >
-            <ImageIcon className="w-3 h-3" /> Analyze Image
-        </button>
+      <div className="bg-purple-900/10 border-b border-purple-900/20 p-2 flex-shrink-0">
+          <p className="text-[10px] text-purple-200 opacity-70 text-center">Ask Gemini about this slice. Educational only.</p>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-hidden relative">
-        
-        {/* --- CHAT TAB --- */}
-        {activeTab === 'chat' && (
-            <div className="absolute inset-0 flex flex-col">
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar" ref={chatContainerRef}>
-                    {messages.map((m) => (
-                        <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-                            <div className={`max-w-[90%] rounded-lg p-3 text-sm ${
-                                m.role === 'user' 
-                                ? 'bg-purple-900/40 text-purple-100 border border-purple-700/50' 
-                                : 'bg-slate-800 text-slate-200 border border-slate-700'
-                            }`}>
-                                {m.hasAttachment && (
-                                    <div className="mb-2 flex items-center gap-1 text-xs text-purple-300 bg-purple-950/50 px-2 py-1 rounded">
-                                        <ImageIcon className="w-3 h-3" />
-                                        <span>Image Attached</span>
-                                    </div>
-                                )}
-                                {m.isThinking && !m.text && (
-                                    <div className="flex items-center gap-2 text-xs text-slate-400 italic mb-1">
-                                        <BrainCircuit className="w-3 h-3 animate-pulse" /> Thinking...
-                                    </div>
-                                )}
-                                <div className="whitespace-pre-wrap">{m.text}</div>
-                                
-                                {m.sources && m.sources.length > 0 && (
-                                    <div className="mt-2 pt-2 border-t border-slate-700">
-                                        <div className="text-[10px] uppercase font-bold text-slate-500 mb-1">Sources</div>
-                                        {m.sources.map((src, i) => (
-                                            <a key={i} href={src.uri} target="_blank" rel="noreferrer" className="block text-xs text-blue-400 truncate hover:underline">
-                                                {src.title || src.uri}
-                                            </a>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                    {isThinking && messages[messages.length-1].role === 'user' && (
-                        <div className="flex items-start">
-                             <div className="bg-slate-800 rounded-lg p-3 border border-slate-700">
-                                <Bot className="w-4 h-4 text-slate-500 animate-bounce" />
-                             </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Controls */}
-                <div className="p-3 bg-slate-900 border-t border-slate-800 space-y-3">
-                    <div className="flex gap-2 justify-center">
-                        <button 
-                           onClick={() => setMode('standard')}
-                           className={`px-2 py-1 rounded text-[10px] border ${mode === 'standard' ? 'bg-slate-700 border-slate-500 text-white' : 'border-slate-800 text-slate-500'}`}
-                        >Standard</button>
-                        <button 
-                           onClick={() => setMode('thinking')}
-                           className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] border ${mode === 'thinking' ? 'bg-purple-900/50 border-purple-500 text-purple-200' : 'border-slate-800 text-slate-500'}`}
-                        >
-                            <BrainCircuit className="w-3 h-3" /> Deep Think
-                        </button>
-                        <button 
-                           onClick={() => setMode('search')}
-                           className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] border ${mode === 'search' ? 'bg-blue-900/50 border-blue-500 text-blue-200' : 'border-slate-800 text-slate-500'}`}
-                        >
-                            <Globe className="w-3 h-3" /> Web Search
-                        </button>
-                    </div>
-
-                    {/* Screenshot Preview */}
-                    {attachedScreenshot && (
-                        <div className="relative inline-block border border-purple-500 rounded overflow-hidden">
-                            <img src={attachedScreenshot} alt="Snapshot" className="h-16 w-auto opacity-80" />
-                            <button 
-                                onClick={() => setAttachedScreenshot(null)}
-                                className="absolute top-0 right-0 bg-black/50 hover:bg-red-500 text-white p-0.5"
-                            >
-                                <X className="w-3 h-3" />
-                            </button>
-                        </div>
-                    )}
-
-                    <div className="relative flex gap-2">
-                        <button 
-                            onClick={handleCapture}
-                            disabled={!onCaptureScreen}
-                            className={`p-2 rounded border transition-colors ${attachedScreenshot ? 'bg-purple-900 border-purple-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
-                            title="Attach Viewer Snapshot"
-                        >
-                            <Camera className="w-4 h-4" />
-                        </button>
-
-                        <div className="relative flex-1">
-                            <input
-                                className="w-full bg-slate-950 border border-slate-700 rounded pr-10 pl-3 py-2 text-sm focus:border-purple-500 focus:outline-none text-slate-200"
-                                placeholder={mode === 'thinking' ? "Ask complex question..." : "Ask a question..."}
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                disabled={isThinking}
-                            />
-                            <button 
-                                onClick={handleSendMessage}
-                                disabled={(!input.trim() && !attachedScreenshot) || isThinking}
-                                className="absolute right-2 top-2 p-0.5 text-purple-500 hover:text-purple-400 disabled:opacity-50"
-                            >
-                                <Send className="w-4 h-4" />
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* --- VISION TAB --- */}
-        {activeTab === 'vision' && (
-            <div className="absolute inset-0 flex flex-col p-4 overflow-y-auto">
-                {!selectedImage ? (
-                    <div className="border-2 border-dashed border-slate-700 rounded-lg p-6 flex flex-col items-center justify-center text-slate-500 hover:border-purple-500 hover:bg-slate-900 transition-colors cursor-pointer relative h-48">
-                        <Upload className="w-8 h-8 mb-2" />
-                        <span className="text-xs text-center">Click to Upload Image <br/>or DICOM File</span>
-                        <input 
-                            type="file" 
-                            accept="image/*,.dcm,application/dicom"
-                            onChange={handleImageSelect}
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                        />
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        <div className="relative rounded-lg overflow-hidden border border-slate-700 bg-black">
-                            {/* Intelligent Preview: Show IMG if image type, else show File Icon */}
-                            {selectedImage.type.startsWith('image/') ? (
-                                <img src={imagePreview!} alt="Preview" className="w-full object-contain max-h-48" />
-                            ) : (
-                                <div className="h-48 flex flex-col items-center justify-center bg-slate-900 text-slate-400">
-                                    <FileText className="w-12 h-12 mb-2" />
-                                    <span className="text-sm font-mono">{selectedImage.name}</span>
-                                    <span className="text-xs text-slate-600 uppercase mt-1">DICOM / Raw File</span>
-                                </div>
-                            )}
-                            
-                            <button 
-                                onClick={() => { setSelectedImage(null); setImagePreview(null); }}
-                                className="absolute top-2 right-2 p-1 bg-black/50 rounded-full hover:bg-red-500 text-white"
-                            >
-                                <X className="w-4 h-4" />
-                            </button>
-                        </div>
-                        
-                        <div>
-                             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Prompt</label>
-                             <textarea 
-                                value={imagePrompt}
-                                onChange={(e) => setImagePrompt(e.target.value)}
-                                className="w-full h-20 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 focus:border-purple-500 outline-none resize-none"
-                             />
-                        </div>
-
-                        <button 
-                            onClick={handleAnalyzeImage}
-                            disabled={isAnalyzing}
-                            className="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white rounded text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                            {isAnalyzing ? <Sparkles className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
-                            {isAnalyzing ? 'Analyzing...' : 'Analyze with Gemini'}
-                        </button>
-
-                        {analysisResult && (
-                            <div className="mt-4 p-3 bg-slate-900 border border-slate-800 rounded text-sm text-slate-300 prose prose-invert prose-sm max-w-none">
-                                <div className="whitespace-pre-wrap">{analysisResult}</div>
+      <div className="flex-1 overflow-hidden relative flex flex-col">
+        <div className="flex-1 overflow-y-auto p-4 space-y-5 no-scrollbar" ref={chatContainerRef}>
+            {messages.map((m) => (
+                <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                    <div className={`max-w-[95%] rounded-xl p-3 shadow-sm ${m.role === 'user' ? 'bg-gradient-to-br from-purple-900/40 to-indigo-900/40 text-purple-100 border border-purple-700/50' : 'bg-slate-800/80 text-slate-200 border border-slate-700'}`}>
+                        {m.hasAttachment && <div className="mb-2 text-xs text-purple-300 bg-purple-950/50 px-2 py-1 rounded w-fit flex gap-1"><ImageIcon className="w-3 h-3"/> Image Attached</div>}
+                        {m.isThinking && !m.text && <div className="text-xs text-slate-400 italic mb-1"><BrainCircuit className="w-3 h-3 animate-pulse inline mr-1"/> Thinking...</div>}
+                        <MarkdownText content={m.text} />
+                        {m.sources && m.sources.length > 0 && (
+                            <div className="mt-3 pt-2 border-t border-white/10">
+                                <div className="text-[10px] font-bold text-slate-500 mb-1 flex items-center gap-1"><Globe className="w-3 h-3"/> Sources</div>
+                                {m.sources.map((src, i) => <a key={i} href={src.uri} target="_blank" className="block text-xs text-blue-400 truncate hover:underline">{src.title || src.uri}</a>)}
                             </div>
                         )}
                     </div>
-                )}
+                </div>
+            ))}
+        </div>
+
+        {!isThinking && currentSuggestions.length > 0 && (
+            <div className="px-4 pb-3 flex flex-col gap-2 flex-shrink-0">
+                <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase">
+                     <span className="flex items-center gap-1"><MessageSquarePlus className="w-3 h-3" /> Suggested Follow-ups</span>
+                     {isGeneratingSuggestions && <RefreshCw className="w-3 h-3 animate-spin" />}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {currentSuggestions.map((sugg, idx) => (
+                        <button key={idx} onClick={() => handleSendMessage(sugg)} disabled={isGeneratingSuggestions} className="text-left text-xs bg-slate-800 hover:bg-slate-700 text-indigo-200 px-3 py-1.5 rounded-full border border-slate-700 transition-all">
+                            {sugg}
+                        </button>
+                    ))}
+                </div>
             </div>
         )}
 
+        <div className="p-3 bg-slate-900 border-t border-slate-800 space-y-3 flex-shrink-0">
+            <div className="flex gap-2 justify-center">
+                <button onClick={() => setMode('standard')} className={`px-3 py-1 rounded-full text-[10px] font-medium border ${mode === 'standard' ? 'bg-slate-700 border-slate-500 text-white' : 'border-slate-800 text-slate-500'}`}>Standard</button>
+                <button onClick={() => setMode('thinking')} className={`flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-medium border ${mode === 'thinking' ? 'bg-purple-900/50 border-purple-500 text-purple-200' : 'border-slate-800 text-slate-500'}`}><BrainCircuit className="w-3 h-3" /> Deep Think</button>
+                <button onClick={() => setMode('search')} className={`flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-medium border ${mode === 'search' ? 'bg-blue-900/50 border-blue-500 text-blue-200' : 'border-slate-800 text-slate-500'}`}><Globe className="w-3 h-3" /> Web Search</button>
+            </div>
+            {attachedScreenshot && (
+                <div className="relative inline-block border border-purple-500 rounded overflow-hidden shadow-lg group">
+                    <img src={attachedScreenshot} alt="Snapshot" className="h-16 w-auto opacity-80 group-hover:opacity-100 transition-opacity" />
+                    <button onClick={() => setAttachedScreenshot(null)} className="absolute top-0 right-0 bg-black/50 hover:bg-red-500 text-white p-0.5"><X className="w-3 h-3" /></button>
+                </div>
+            )}
+            <div className="relative flex gap-2">
+                <button onClick={handleCapture} disabled={!onCaptureScreen} className={`p-2 rounded-lg border ${attachedScreenshot ? 'bg-purple-900 border-purple-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}><Camera className="w-4.5 h-4.5" /></button>
+                <div className="relative flex-1">
+                    <input className="w-full bg-slate-950 border border-slate-700 rounded-lg pr-10 pl-3 py-2 text-sm focus:border-purple-500 focus:outline-none text-slate-200" placeholder={mode === 'thinking' ? "Ask complex question..." : "Ask a question..."} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} disabled={isThinking}/>
+                    <button onClick={() => handleSendMessage()} disabled={(!input.trim() && !attachedScreenshot) || isThinking} className="absolute right-2 top-2 p-0.5 text-purple-500 hover:text-purple-400 disabled:opacity-50"><Send className="w-4 h-4" /></button>
+                </div>
+            </div>
+        </div>
       </div>
     </div>
   );

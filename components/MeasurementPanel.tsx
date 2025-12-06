@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Measurement } from '../types';
 import { Trash2, Edit2, Download, FileText, Ruler, ArrowRight, Target, Sparkles, X, Copy, Check } from 'lucide-react';
-import { generateRadiologyReport } from '../services/aiService';
+import AiReportModal from './AiReportModal';
 
 interface MeasurementPanelProps {
   measurements: Measurement[];
@@ -15,6 +15,7 @@ interface MeasurementPanelProps {
   
   // Context for AI
   studyMetadata?: {
+    studyId: string;
     patientName: string;
     description: string;
     modality: string;
@@ -31,10 +32,7 @@ const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
   pixelSpacing = 0.5, // Default approx if not provided
   studyMetadata
 }) => {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [reportResult, setReportResult] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   const exportData = () => {
     const data = measurements.map(m => ({
@@ -48,33 +46,6 @@ const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
     a.href = url;
     a.download = 'measurements.json';
     a.click();
-  };
-
-  const handleCreateReport = async () => {
-    if (!studyMetadata) return;
-    setIsGenerating(true);
-    try {
-      const report = await generateRadiologyReport(
-        measurements,
-        studyMetadata.patientName,
-        studyMetadata.description,
-        studyMetadata.modality
-      );
-      setReportResult(report);
-      setShowReportModal(true);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const copyToClipboard = () => {
-    if (reportResult) {
-      navigator.clipboard.writeText(reportResult);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
   };
 
   return (
@@ -171,68 +142,23 @@ const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
           Export JSON
         </button>
         <button 
-          onClick={handleCreateReport}
-          disabled={measurements.length === 0 || isGenerating}
+          onClick={() => setShowReportModal(true)}
           className="flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium disabled:opacity-50 transition-colors"
         >
-          {isGenerating ? (
-            <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-          ) : (
-            <FileText className="w-3.5 h-3.5" />
-          )}
-          {isGenerating ? 'Thinking...' : 'AI Report'}
+          <Sparkles className="w-3.5 h-3.5" />
+          AI Report
         </button>
       </div>
 
       {/* AI REPORT MODAL */}
-      {showReportModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl w-[600px] max-w-full flex flex-col max-h-[80vh]">
-            
-            {/* Modal Header */}
-            <div className="p-4 border-b border-slate-700 bg-slate-950 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-400" />
-                <h3 className="text-lg font-bold text-slate-100">AI Radiology Report</h3>
-              </div>
-              <button 
-                onClick={() => setShowReportModal(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-6 bg-slate-900">
-               <div className="prose prose-invert prose-sm max-w-none">
-                 {/* Simple formatting for display */}
-                 {reportResult?.split('\n').map((line, i) => (
-                    <p key={i} className={`mb-2 ${line.startsWith('#') ? 'font-bold text-indigo-300 text-base mt-4' : 'text-slate-300'}`}>
-                      {line.replace(/^#+\s/, '')}
-                    </p>
-                 ))}
-               </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 bg-slate-950 border-t border-slate-700 flex justify-end gap-2">
-              <button
-                onClick={copyToClipboard}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-sm font-medium flex items-center gap-2"
-              >
-                {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-                {copied ? 'Copied' : 'Copy Text'}
-              </button>
-              <button
-                onClick={() => setShowReportModal(false)}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-sm font-medium"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
+      {showReportModal && studyMetadata && (
+        <AiReportModal 
+            isOpen={showReportModal}
+            onClose={() => setShowReportModal(false)}
+            studyMetadata={studyMetadata}
+            measurements={measurements}
+            pixelSpacing={pixelSpacing}
+        />
       )}
     </div>
   );

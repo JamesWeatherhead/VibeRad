@@ -303,8 +303,8 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      ctx.fillStyle = color;
      ctx.lineCap = 'round';
      ctx.lineJoin = 'round';
-     // Fixed 10px brush size relative to image resolution
-     ctx.lineWidth = 10; 
+     // Use dynamic brush size
+     ctx.lineWidth = segmentationLayer.brushSize; 
      
      ctx.beginPath();
      ctx.moveTo(p1.x, p1.y);

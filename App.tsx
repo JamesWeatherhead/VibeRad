@@ -1,22 +1,24 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import StudyList from './components/StudyList';
+import IntroScreen from './components/IntroScreen';
 import ViewerCanvas from './components/ViewerCanvas';
 import SeriesSelector from './components/SeriesSelector';
 import MeasurementPanel from './components/MeasurementPanel';
 import SegmentationPanel from './components/SegmentationPanel';
 import AiAssistantPanel from './components/AiAssistantPanel';
-import { TOOLS, WL_PRESETS, MOCK_SEGMENTATION_DATA } from './constants';
+import { TOOLS, MOCK_SEGMENTATION_DATA } from './constants';
 import { Study, Series, ToolMode, ConnectionType, DicomWebConfig, Measurement, SegmentationLayer, ViewerHandle } from './types';
 import { fetchDicomWebSeries } from './services/dicomService';
-import { ChevronLeft, Ruler, Activity, Sparkles } from 'lucide-react';
+import { ChevronLeft, Ruler, Activity, Sparkles, GripVertical } from 'lucide-react';
 
 const App: React.FC = () => {
+  const [hasStarted, setHasStarted] = useState(false);
   const [connectionType, setConnectionType] = useState<ConnectionType>(null);
+  
   const [dicomConfig, setDicomConfig] = useState<DicomWebConfig>({ 
     url: 'https://demo.orthanc-server.com/dicom-web', 
     name: 'Orthanc Demo (Europe)',
-    useCorsProxy: false
+    useCorsProxy: true
   });
 
   const [selectedStudy, setSelectedStudy] = useState<Study | null>(null);
@@ -24,24 +26,49 @@ const App: React.FC = () => {
   const [activeSeries, setActiveSeries] = useState<Series | null>(null);
   const [activeTool, setActiveTool] = useState<ToolMode>(ToolMode.SCROLL);
   
-  // Viewer Ref for Screenshots
   const viewerRef = useRef<ViewerHandle>(null);
   
-  // Lifted Viewer State
   const [sliceIndex, setSliceIndex] = useState(0);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [activeMeasurementId, setActiveMeasurementId] = useState<string | null>(null);
 
-  // New Segmentation State
   const [activeRightTab, setActiveRightTab] = useState<'measure' | 'segment' | 'ai'>('measure');
   const [segmentationLayer, setSegmentationLayer] = useState<SegmentationLayer>({
     opacity: 0.5,
     isVisible: true,
     activeSegmentId: null,
-    segments: MOCK_SEGMENTATION_DATA
+    segments: MOCK_SEGMENTATION_DATA,
+    brushSize: 15
   });
 
-  // Load Series Logic
+  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+
+  const handleStartDemo = () => {
+      setConnectionType('DICOMWEB');
+      setHasStarted(true);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+        if (!isResizingSidebar) return;
+        const newWidth = window.innerWidth - e.clientX;
+        if (newWidth > 250 && newWidth < Math.min(800, window.innerWidth * 0.6)) {
+            setSidebarWidth(newWidth);
+        }
+    };
+    const handleMouseUp = () => setIsResizingSidebar(false);
+
+    if (isResizingSidebar) {
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingSidebar]);
+
   useEffect(() => {
     async function loadSeries() {
       if (!selectedStudy) {
@@ -51,13 +78,11 @@ const App: React.FC = () => {
       }
       try {
         let seriesData: Series[] = [];
-        // Only DICOMWEB supported now
         if (connectionType === 'DICOMWEB') {
           seriesData = await fetchDicomWebSeries(dicomConfig, selectedStudy.id);
         }
         setStudySeries(seriesData);
         if (seriesData.length > 0) {
-          // Select largest series by default
           const bestSeries = seriesData.reduce((prev, current) => 
             (prev.instanceCount > current.instanceCount) ? prev : current
           );
@@ -72,7 +97,6 @@ const App: React.FC = () => {
     loadSeries();
   }, [selectedStudy, connectionType, dicomConfig]);
 
-  // Reset viewer state when active series changes
   useEffect(() => {
     if (activeSeries) {
       setSliceIndex(Math.floor(activeSeries.instanceCount / 2));
@@ -81,12 +105,11 @@ const App: React.FC = () => {
     }
   }, [activeSeries?.id]);
 
-  // Measurement Handlers
   const handleMeasurementAdd = (m: Measurement) => {
     setMeasurements(prev => [...prev, m]);
     setActiveMeasurementId(m.id);
-    setActiveTool(ToolMode.POINTER); // Switch back to pointer after measuring
-    setActiveRightTab('measure'); // Switch tab to show result
+    setActiveTool(ToolMode.POINTER); 
+    setActiveRightTab('measure'); 
   };
 
   const handleMeasurementUpdate = (id: string, updates: Partial<Measurement>) => {
@@ -102,7 +125,10 @@ const App: React.FC = () => {
       return viewerRef.current?.captureScreenshot() || null;
   };
 
-  // MODE: DASHBOARD (Study List)
+  if (!hasStarted) {
+      return <IntroScreen onStartDemo={handleStartDemo} />;
+  }
+
   if (!selectedStudy) {
      return (
         <div className="h-screen w-screen bg-slate-950 overflow-hidden">
@@ -117,12 +143,9 @@ const App: React.FC = () => {
      );
   }
 
-  // MODE: VIEWER
   return (
     <div className="flex h-screen w-screen bg-black text-gray-200 font-sans overflow-hidden flex-col">
-      
-      {/* Header */}
-      <div className="h-14 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 flex-shrink-0">
+      <div className="h-14 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 flex-shrink-0 z-20">
           <div className="flex items-center gap-4">
              <button 
                onClick={() => setSelectedStudy(null)}
@@ -159,43 +182,25 @@ const App: React.FC = () => {
               );
             })}
           </div>
-
-          <div className="flex items-center gap-3">
-             <div className="hidden lg:flex items-center bg-gray-950 rounded border border-gray-800 px-2 py-1">
-                <span className="text-xs text-gray-500 mr-2 uppercase font-bold">Presets</span>
-                <div className="flex gap-1">
-                  {WL_PRESETS.map(p => (
-                    <button key={p.label} className="text-[10px] px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded text-gray-300">
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-             </div>
-          </div>
+          <div className="w-20"></div>
       </div>
 
-      {/* Main Body */}
       <div className="flex-1 flex overflow-hidden">
-          
-          {/* Left: Viewport & Series Strip */}
-          <div className="flex-1 flex flex-col relative">
+          <div className="flex-1 flex flex-col relative min-w-0">
               <ViewerCanvas 
                 ref={viewerRef}
                 series={activeSeries} 
                 activeTool={activeTool}
                 dicomConfig={dicomConfig}
                 connectionType={connectionType}
-                // Lifted Props
                 sliceIndex={sliceIndex}
                 onSliceChange={setSliceIndex}
                 measurements={measurements}
                 onMeasurementAdd={handleMeasurementAdd}
                 onMeasurementUpdate={(m) => handleMeasurementUpdate(m.id, m)}
                 activeMeasurementId={activeMeasurementId}
-                // Segmentation
                 segmentationLayer={segmentationLayer}
               />
-              
               <div className="flex-shrink-0 z-10">
                 <SeriesSelector 
                   seriesList={studySeries}
@@ -205,51 +210,23 @@ const App: React.FC = () => {
               </div>
           </div>
 
-          {/* Right: Tabbed Sidebar */}
-          <div className="flex flex-col h-full bg-slate-950 border-l border-slate-800 w-80">
-              {/* Tab Switcher */}
+          <div 
+            className={`w-1 bg-slate-800 hover:bg-indigo-500 cursor-col-resize z-30 transition-colors flex flex-col items-center justify-center opacity-0 hover:opacity-100 ${isResizingSidebar ? 'opacity-100 bg-indigo-500' : ''}`}
+            onMouseDown={() => setIsResizingSidebar(true)}
+          >
+             <GripVertical className="w-3 h-3 text-white" />
+          </div>
+
+          <div 
+             className="flex flex-col h-full bg-slate-950 border-l border-slate-800 flex-shrink-0 relative"
+             style={{ width: sidebarWidth }}
+          >
               <div className="flex border-b border-slate-800">
-                  <button 
-                     onClick={() => setActiveRightTab('measure')}
-                     className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors ${
-                         activeRightTab === 'measure' 
-                         ? 'bg-slate-900 text-indigo-400 border-b-2 border-indigo-500' 
-                         : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'
-                     }`}
-                  >
-                      <Ruler className="w-3.5 h-3.5" />
-                      Measure
-                  </button>
-                  <button 
-                     onClick={() => {
-                        setActiveRightTab('segment');
-                        if (!segmentationLayer.activeSegmentId) {
-                            setSegmentationLayer(prev => ({ ...prev, activeSegmentId: 1 })); // Default select 1
-                        }
-                     }}
-                     className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors ${
-                         activeRightTab === 'segment' 
-                         ? 'bg-slate-900 text-emerald-400 border-b-2 border-emerald-500' 
-                         : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'
-                     }`}
-                  >
-                      <Activity className="w-3.5 h-3.5" />
-                      Seg
-                  </button>
-                  <button 
-                     onClick={() => setActiveRightTab('ai')}
-                     className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors ${
-                         activeRightTab === 'ai' 
-                         ? 'bg-slate-900 text-purple-400 border-b-2 border-purple-500' 
-                         : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'
-                     }`}
-                  >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      AI
-                  </button>
+                  <button onClick={() => setActiveRightTab('measure')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors ${activeRightTab === 'measure' ? 'bg-slate-900 text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'}`}><Ruler className="w-3.5 h-3.5" /> Measure</button>
+                  <button onClick={() => { setActiveRightTab('segment'); if (!segmentationLayer.activeSegmentId) setSegmentationLayer(prev => ({ ...prev, activeSegmentId: 1 })); }} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors ${activeRightTab === 'segment' ? 'bg-slate-900 text-emerald-400 border-b-2 border-emerald-500' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'}`}><Activity className="w-3.5 h-3.5" /> Seg</button>
+                  <button onClick={() => setActiveRightTab('ai')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors ${activeRightTab === 'ai' ? 'bg-slate-900 text-purple-400 border-b-2 border-purple-500' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'}`}><Sparkles className="w-3.5 h-3.5" /> AI</button>
               </div>
 
-              {/* Panel Content */}
               <div className="flex-1 overflow-hidden relative">
                  {activeRightTab === 'measure' && (
                      <div className="absolute inset-0">
@@ -260,33 +237,27 @@ const App: React.FC = () => {
                             onUpdate={handleMeasurementUpdate}
                             onDelete={handleMeasurementDelete}
                             onJumpToSlice={setSliceIndex}
-                            // Pass Metadata for AI
-                            studyMetadata={{
-                              patientName: selectedStudy.patientName,
-                              description: selectedStudy.description,
-                              modality: selectedStudy.modality
-                            }}
+                            studyMetadata={{ studyId: selectedStudy.id, patientName: selectedStudy.patientName, description: selectedStudy.description, modality: selectedStudy.modality }}
                           />
                      </div>
                  )}
                  {activeRightTab === 'segment' && (
                      <div className="absolute inset-0">
-                         <SegmentationPanel 
-                            layer={segmentationLayer}
-                            onChange={setSegmentationLayer}
-                            activeTool={activeTool}
-                            onSelectTool={setActiveTool}
-                         />
+                         <SegmentationPanel layer={segmentationLayer} onChange={setSegmentationLayer} activeTool={activeTool} onSelectTool={setActiveTool} />
                      </div>
                  )}
                  {activeRightTab === 'ai' && (
                      <div className="absolute inset-0">
-                         <AiAssistantPanel onCaptureScreen={handleCaptureScreen} />
+                         <AiAssistantPanel 
+                            onCaptureScreen={handleCaptureScreen}
+                            studyMetadata={{ studyId: selectedStudy.id, patientName: selectedStudy.patientName, description: selectedStudy.description, modality: selectedStudy.modality }}
+                            cursor={{ seriesInstanceUID: activeSeries?.id || '', frameIndex: sliceIndex, activeMeasurementId: activeMeasurementId }}
+                            onJumpToSlice={setSliceIndex}
+                         />
                      </div>
                  )}
               </div>
           </div>
-
       </div>
     </div>
   );
