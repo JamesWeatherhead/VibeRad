@@ -1,0 +1,104 @@
+
+// Domain Models
+
+export interface Study {
+  id: string;
+  patientName: string;
+  patientId: string;
+  accessionNumber: string;
+  studyDate: string;
+  modality: string;
+  description: string;
+  seriesCount: number;
+  instanceCount: number;
+}
+
+export interface Series {
+  id: string;
+  studyId: string;
+  description: string;
+  modality: string;
+  instanceCount: number;
+  instances: string[]; 
+}
+
+// App State Types
+
+export type ConnectionType = 'DEMO' | 'DICOMWEB' | null;
+
+export interface DicomWebConfig {
+  url: string;
+  name: string;
+  qidoPrefix?: string;
+  wadoPrefix?: string;
+  useCorsProxy?: boolean;
+}
+
+// Diagnostics
+export interface DiagnosticStep {
+  id: string;
+  name: string;
+  status: 'PENDING' | 'RUNNING' | 'PASS' | 'FAIL';
+  message?: string;
+}
+
+// Tooling Types
+
+export enum ToolMode {
+  POINTER = 'POINTER',
+  WINDOW_LEVEL = 'WINDOW_LEVEL',
+  PAN = 'PAN',
+  ZOOM = 'ZOOM',
+  SCROLL = 'SCROLL',
+  MEASURE = 'MEASURE',
+  BRUSH = 'BRUSH'
+}
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface Measurement {
+  id: string;
+  start: Point;
+  end: Point;
+  value: number; // pixel distance
+  sliceIndex: number; // Which slice this belongs to
+  label?: string; // e.g. "Tumor 1"
+  text?: string; // Optional description
+  color?: string; // Custom color
+  createdAt: number;
+}
+
+export interface ViewportState {
+  scale: number;
+  pan: Point;
+  windowWidth: number;
+  windowCenter: number;
+}
+
+// Segmentation Types
+
+export interface Segment {
+  id: number;
+  label: string;
+  color: [number, number, number]; // RGB
+  isVisible: boolean;
+}
+
+export interface SegmentationLayer {
+  opacity: number;
+  isVisible: boolean;
+  activeSegmentId: number | null; // The segment currently being drawn
+  segments: Segment[];
+}
+
+// AI Types
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'model';
+  text: string;
+  isThinking?: boolean;
+  sources?: Array<{ uri: string; title: string }>;
+}

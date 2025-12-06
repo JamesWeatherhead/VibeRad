@@ -1,0 +1,5 @@
+{
+  "name": "NeuroView PACS",
+  "description": "A web-based DICOM series viewer prototype allowing connection to medical image databases, series scrolling, window/level adjustment, and measurements.",
+  "requestFramePermissions": []
+}
