@@ -19,7 +19,6 @@ VibeRad leverages the `thinkingConfig` of **Gemini 3 Pro Preview** to provide "D
 - **Standard Mode:** Uses `gemini-2.5-flash` for low-latency, conversational interactions.
 
 ### Native Multimodality
-We push the boundaries of code by utilizing Gemini's ability to process multiple modalities natively:
 - **Vision:** The AI "sees" the current DICOM slice and viewport state to answer context-aware questions (e.g., "What region is highlighted?").
 - **Audio:** Integrated dictation uses Gemini to transcribe voice notes directly into the report engine, bypassing traditional speech-to-text libraries.
 
