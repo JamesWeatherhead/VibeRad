@@ -9,7 +9,7 @@ import SafetyModal from './components/SafetyModal';
 import { TOOLS, MOCK_SEGMENTATION_DATA } from './constants';
 import { Study, Series, ToolMode, ConnectionType, DicomWebConfig, Measurement, SegmentationLayer, ViewerHandle } from './types';
 import { fetchDicomWebSeries, searchDicomWebStudies } from './services/dicomService';
-import { ChevronLeft, Ruler, Activity, Sparkles, GripVertical, Shield, AlertTriangle, Loader2 } from 'lucide-react';
+import { Ruler, Activity, Sparkles, GripVertical, Shield, Loader2 } from 'lucide-react';
 
 const App: React.FC = () => {
   // connectionType defaults to DICOMWEB to skip intro
@@ -232,22 +232,7 @@ const App: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className="h-14 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 flex-shrink-0 z-20">
-              <div className="flex items-center gap-4">
-                 <button 
-                   onClick={() => setSelectedStudy(null)}
-                   className="flex items-center gap-1 text-gray-400 hover:text-white transition-colors text-sm font-medium"
-                 >
-                   <ChevronLeft className="w-4 h-4" />
-                   Study List
-                 </button>
-                 <div className="h-6 w-px bg-gray-700"></div>
-                 <div className="flex flex-col">
-                    <span className="text-sm font-bold text-gray-100 leading-none">{selectedStudy.patientName}</span>
-                    <span className="text-xs text-gray-400 font-mono mt-0.5 opacity-80">{selectedStudy.patientId} • {selectedStudy.studyDate}</span>
-                 </div>
-              </div>
-
+          <div className="h-14 bg-gray-900 border-b border-gray-800 flex items-center justify-center px-4 flex-shrink-0 z-20">
               {/* Center Tools */}
               <div className="flex items-center justify-center gap-3">
                 {TOOLS.map((tool) => {
@@ -269,14 +254,6 @@ const App: React.FC = () => {
                     </button>
                   );
                 })}
-              </div>
-
-              {/* Right Side: Spacer to balance layout */}
-              <div className="w-auto flex justify-end min-w-[100px]">
-                 <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-800/50 px-3 py-1 rounded-full">
-                    <Activity className="w-3 h-3 text-green-500" />
-                    <span>Live Session</span>
-                 </div>
               </div>
           </div>
 
