@@ -200,7 +200,7 @@ const App: React.FC = () => {
       {/* Top Safety Bar */}
       <div className="h-6 bg-indigo-950 flex items-center justify-center gap-2 px-4 text-[10px] font-medium text-indigo-200 border-b border-indigo-900/50 flex-shrink-0 z-50">
          <Shield className="w-3 h-3 text-indigo-400" />
-         <span>VibeRad · Gemini Copilot · Educational Demo Only · Not for Clinical Use</span>
+         <span>VibeRad · Educational Demo Only · Not for Clinical Use</span>
          <button onClick={() => setShowSafetyModal(true)} className="ml-2 underline hover:text-white">Safety & Privacy</button>
       </div>
 
