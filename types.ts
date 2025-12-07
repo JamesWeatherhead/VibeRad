@@ -82,6 +82,7 @@ export interface ViewportState {
 // Viewer Capability Interface
 export interface ViewerHandle {
   captureScreenshot: () => string | null;
+  removeSegment: (id: number) => void;
 }
 
 // Cursor Context for AI

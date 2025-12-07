@@ -189,6 +189,12 @@ const App: React.FC = () => {
       return viewerRef.current?.captureScreenshot() || null;
   };
 
+  const handleClearSegment = (id: number) => {
+     if (viewerRef.current) {
+        viewerRef.current.removeSegment(id);
+     }
+  };
+
   return (
     <div className="flex h-screen w-screen bg-black text-gray-200 font-sans overflow-hidden flex-col">
       {/* Top Safety Bar */}
@@ -333,7 +339,13 @@ const App: React.FC = () => {
                      )}
                      {activeRightTab === 'segment' && (
                          <div className="absolute inset-0">
-                             <SegmentationPanel layer={segmentationLayer} onChange={setSegmentationLayer} activeTool={activeTool} onSelectTool={setActiveTool} />
+                             <SegmentationPanel 
+                                layer={segmentationLayer} 
+                                onChange={setSegmentationLayer} 
+                                activeTool={activeTool} 
+                                onSelectTool={setActiveTool}
+                                onClearSegment={handleClearSegment} 
+                             />
                          </div>
                      )}
                      {activeRightTab === 'ai' && (

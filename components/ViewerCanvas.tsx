@@ -64,7 +64,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   
   const [draftMeasurement, setDraftMeasurement] = useState<Measurement | null>(null);
   
-  // Expose Screenshot Capability
+  // Expose Capabilities
   useImperativeHandle(ref, () => ({
     captureScreenshot: () => {
       if (canvasRef.current) {
@@ -72,169 +72,39 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         return canvasRef.current.toDataURL('image/jpeg', 0.9);
       }
       return null;
+    },
+    removeSegment: (id: number) => {
+      // Iterate over all cached masks and clear pixels with the given segment ID
+      maskCacheRef.current.forEach((canvas) => {
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return;
+        const w = canvas.width;
+        const h = canvas.height;
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const data = imageData.data;
+        let dirty = false;
+        
+        for (let i = 0; i < data.length; i += 4) {
+           // Check if this pixel belongs to the segment (ID stored in Red channel)
+           // and is not fully transparent
+           if (data[i] === id && data[i+3] > 0) {
+               data[i+3] = 0; // Clear alpha to 0 (erase)
+               dirty = true;
+           }
+        }
+        
+        if (dirty) {
+           ctx.putImageData(imageData, 0, 0);
+        }
+      });
+      
+      // Clear visual cache to force redraw
+      renderCacheRef.current.clear();
+      setRenderTick(t => t + 1);
     }
   }));
 
-  // 1. Reset Viewport on Series Change
-  useEffect(() => {
-    if (series) {
-      setViewport(DEFAULT_VIEWPORT_STATE);
-      // sliceIndex is reset by parent, but we clear error
-      setLoadError(null);
-      // Clear masks for new series
-      maskCacheRef.current.clear();
-      renderCacheRef.current.clear();
-      setRenderTick(0);
-    }
-  }, [series?.id]);
-
-  // 2. Invalidate Render Cache when Segment Definitions Change (Visibility/Color)
-  useEffect(() => {
-    // When segments array changes (toggle visibility, add segment), we must rebuild visuals
-    renderCacheRef.current.clear();
-    setRenderTick(t => t + 1);
-  }, [segmentationLayer.segments]);
-
-  // 3. Fetch Image Data
-  useEffect(() => {
-    let active = true;
-    let objectUrl: string | null = null;
-
-    const loadFrame = async () => {
-      if (!series || series.instances.length === 0) return;
-
-      setIsImageLoading(true);
-      setLoadError(null);
-
-      // Use prop sliceIndex
-      if (sliceIndex < 0 || sliceIndex >= series.instances.length) {
-         setLoadError(`Index ${sliceIndex} out of bounds`);
-         setIsImageLoading(false);
-         return;
-      }
-
-      const url = series.instances[sliceIndex];
-      if (!url) {
-         setLoadError("Invalid slice URL");
-         setIsImageLoading(false);
-         return;
-      }
-      
-      try {
-        let blob: Blob;
-        if (connectionType === 'DEMO') {
-          const resp = await fetch(url);
-          blob = await resp.blob();
-        } else {
-          blob = await fetchDicomImageBlob(dicomConfig, url);
-        }
-        
-        if (!active) return;
-
-        objectUrl = URL.createObjectURL(blob);
-        const img = new Image();
-        img.src = objectUrl;
-        
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-        });
-
-        if (active) {
-          setCurrentImageBitmap(img);
-          setIsImageLoading(false);
-        }
-      } catch (err: any) {
-        if (active) {
-          console.error("Frame Load Error", err);
-          setLoadError("Failed to render frame: " + (err.message || "Unknown error"));
-          setIsImageLoading(false);
-        }
-      }
-    };
-
-    loadFrame();
-
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [series, sliceIndex, connectionType, dicomConfig]);
-
-  // 4. Render Loop
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Background
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    if (!currentImageBitmap) return;
-
-    ctx.save();
-    
-    // Transform
-    ctx.translate(canvas.width / 2 + viewport.pan.x, canvas.height / 2 + viewport.pan.y);
-    ctx.scale(viewport.scale, viewport.scale);
-    
-    // Draw Image Centered
-    const w = currentImageBitmap.width || 512; 
-    const h = currentImageBitmap.height || 512;
-    ctx.translate(-w/2, -h/2);
-    ctx.drawImage(currentImageBitmap, 0, 0, w, h);
-
-    // --- SEGMENTATION LAYER RENDERING ---
-    // If layer is visible, check if we have a mask for this slice and draw it
-    if (segmentationLayer.isVisible) {
-       renderLabelMap(ctx, w, h, sliceIndex, segmentationLayer);
-    }
-
-    // --- MEASUREMENT LAYER RENDERING ---
-    const sliceMeasurements = measurements.filter(m => m.sliceIndex === sliceIndex);
-    
-    const drawLine = (m: Measurement, isSelected: boolean) => {
-      ctx.beginPath();
-      // Green for selected, Yellow/Orange for normal
-      ctx.strokeStyle = isSelected ? '#4ade80' : '#fbbf24'; 
-      ctx.lineWidth = 2 / viewport.scale;
-      ctx.moveTo(m.start.x, m.start.y);
-      ctx.lineTo(m.end.x, m.end.y);
-      ctx.stroke();
-
-      // Endpoints
-      const r = 4 / viewport.scale;
-      ctx.fillStyle = isSelected ? '#4ade80' : '#fbbf24';
-      ctx.beginPath(); ctx.arc(m.start.x, m.start.y, r, 0, 6.28); ctx.fill();
-      ctx.beginPath(); ctx.arc(m.end.x, m.end.y, r, 0, 6.28); ctx.fill();
-
-      // Text Label
-      if (m.value > 0) {
-        ctx.fillStyle = '#fff';
-        ctx.shadowColor = 'black';
-        ctx.shadowBlur = 4;
-        ctx.font = `bold ${14 / viewport.scale}px monospace`;
-        const mx = (m.start.x + m.end.x)/2;
-        const my = (m.start.y + m.end.y)/2;
-        
-        // Approx 0.5mm pixel spacing for demo
-        const val = (m.value * 0.5).toFixed(1);
-        const label = m.label ? `${m.label}: ` : '';
-        ctx.fillText(`${label}${val} mm`, mx + 10, my);
-        ctx.shadowBlur = 0;
-      }
-    };
-
-    sliceMeasurements.forEach(m => drawLine(m, m.id === activeMeasurementId));
-    if (draftMeasurement) drawLine(draftMeasurement, true);
-
-    ctx.restore();
-
-  }, [viewport, currentImageBitmap, measurements, activeMeasurementId, draftMeasurement, sliceIndex, segmentationLayer, renderTick]);
-
-  // --- RENDERING HELPERS ---
+  // --- HELPER FUNCTIONS (Defined before usage) ---
 
   const getRenderCanvas = (sliceIdx: number, w: number, h: number, segments: Segment[]) => {
       // 1. Check Visual Cache
@@ -307,7 +177,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
       }
   };
 
-  // Helper to get or create the mask canvas (ID Map) for the current slice
   const getActiveMaskCanvas = (width: number, height: number): HTMLCanvasElement => {
      if (!maskCacheRef.current.has(sliceIndex)) {
         const c = document.createElement('canvas');
@@ -318,7 +187,157 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      return maskCacheRef.current.get(sliceIndex)!;
   };
 
-  // --- Interaction Handlers ---
+  // --- MAIN RENDER FUNCTION ---
+  // Extracted to allow synchronous calling from paint events
+  const renderScene = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Background
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (!currentImageBitmap) return;
+
+    ctx.save();
+    
+    // Transform
+    ctx.translate(canvas.width / 2 + viewport.pan.x, canvas.height / 2 + viewport.pan.y);
+    ctx.scale(viewport.scale, viewport.scale);
+    
+    // Draw Image Centered
+    const w = currentImageBitmap.width || 512; 
+    const h = currentImageBitmap.height || 512;
+    ctx.translate(-w/2, -h/2);
+    ctx.drawImage(currentImageBitmap, 0, 0, w, h);
+
+    // --- SEGMENTATION LAYER RENDERING ---
+    if (segmentationLayer.isVisible) {
+       renderLabelMap(ctx, w, h, sliceIndex, segmentationLayer);
+    }
+
+    // --- MEASUREMENT LAYER RENDERING ---
+    const sliceMeasurements = measurements.filter(m => m.sliceIndex === sliceIndex);
+    
+    const drawLine = (m: Measurement, isSelected: boolean) => {
+      ctx.beginPath();
+      ctx.strokeStyle = isSelected ? '#4ade80' : '#fbbf24'; 
+      ctx.lineWidth = 2 / viewport.scale;
+      ctx.moveTo(m.start.x, m.start.y);
+      ctx.lineTo(m.end.x, m.end.y);
+      ctx.stroke();
+
+      const r = 4 / viewport.scale;
+      ctx.fillStyle = isSelected ? '#4ade80' : '#fbbf24';
+      ctx.beginPath(); ctx.arc(m.start.x, m.start.y, r, 0, 6.28); ctx.fill();
+      ctx.beginPath(); ctx.arc(m.end.x, m.end.y, r, 0, 6.28); ctx.fill();
+
+      if (m.value > 0) {
+        ctx.fillStyle = '#fff';
+        ctx.shadowColor = 'black';
+        ctx.shadowBlur = 4;
+        ctx.font = `bold ${14 / viewport.scale}px monospace`;
+        const mx = (m.start.x + m.end.x)/2;
+        const my = (m.start.y + m.end.y)/2;
+        const val = (m.value * 0.5).toFixed(1);
+        const label = m.label ? `${m.label}: ` : '';
+        ctx.fillText(`${label}${val} mm`, mx + 10, my);
+        ctx.shadowBlur = 0;
+      }
+    };
+
+    sliceMeasurements.forEach(m => drawLine(m, m.id === activeMeasurementId));
+    if (draftMeasurement) drawLine(draftMeasurement, true);
+
+    ctx.restore();
+  };
+
+  // --- EFFECTS ---
+
+  // 1. Reset Viewport on Series Change
+  useEffect(() => {
+    if (series) {
+      setViewport(DEFAULT_VIEWPORT_STATE);
+      setLoadError(null);
+      maskCacheRef.current.clear();
+      renderCacheRef.current.clear();
+      setRenderTick(0);
+    }
+  }, [series?.id]);
+
+  // 2. Invalidate Render Cache when Segment Definitions Change
+  useEffect(() => {
+    renderCacheRef.current.clear();
+    setRenderTick(t => t + 1);
+  }, [segmentationLayer.segments]);
+
+  // 3. Fetch Image Data
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+
+    const loadFrame = async () => {
+      if (!series || series.instances.length === 0) return;
+      setIsImageLoading(true);
+      setLoadError(null);
+
+      if (sliceIndex < 0 || sliceIndex >= series.instances.length) {
+         setLoadError(`Index ${sliceIndex} out of bounds`);
+         setIsImageLoading(false);
+         return;
+      }
+
+      const url = series.instances[sliceIndex];
+      try {
+        let blob: Blob;
+        if (connectionType === 'DEMO') {
+          const resp = await fetch(url);
+          blob = await resp.blob();
+        } else {
+          blob = await fetchDicomImageBlob(dicomConfig, url);
+        }
+        
+        if (!active) return;
+
+        objectUrl = URL.createObjectURL(blob);
+        const img = new Image();
+        img.src = objectUrl;
+        
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+        });
+
+        if (active) {
+          setCurrentImageBitmap(img);
+          setIsImageLoading(false);
+        }
+      } catch (err: any) {
+        if (active) {
+          console.error("Frame Load Error", err);
+          setLoadError("Failed to render frame: " + (err.message || "Unknown error"));
+          setIsImageLoading(false);
+        }
+      }
+    };
+
+    loadFrame();
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [series, sliceIndex, connectionType, dicomConfig]);
+
+  // 4. Render Loop (Triggered by state changes)
+  useEffect(() => {
+    renderScene();
+  }, [viewport, currentImageBitmap, measurements, activeMeasurementId, draftMeasurement, sliceIndex, segmentationLayer, renderTick]);
+
+
+  // --- INTERACTION HANDLERS ---
+
   const getCanvasPoint = (e: React.MouseEvent): Point => {
      const canvas = canvasRef.current;
      if (!canvas) return { x: 0, y: 0 };
@@ -338,7 +357,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault(); 
     
-    // Update synchronous interaction state
     interactionRef.current.isDragging = true;
     interactionRef.current.dragStart = { x: e.clientX, y: e.clientY };
     interactionRef.current.activeButton = e.button;
@@ -378,8 +396,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      const ctxMask = maskCanvas.getContext('2d');
      if (!ctxMask) return;
      
-     // OPTIMIZATION: Get the visual canvas to draw directly onto it
-     // This avoids the expensive getRenderCanvas rebuild logic for every mouse move
+     // Get the visual canvas
      const visualCanvas = getRenderCanvas(sliceIndex, w, h, segmentationLayer.segments);
      const ctxVisual = visualCanvas?.getContext('2d');
 
@@ -387,7 +404,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      const size = segmentationLayer.brushSize;
      const segId = segmentationLayer.activeSegmentId;
 
-     // Identify visual color
      let visualColor = 'rgba(0,0,0,0)';
      if (!isEraser && segId) {
          const seg = segmentationLayer.segments.find(s => s.id === segId);
@@ -411,7 +427,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
                 ctx.strokeStyle = `rgb(${segId}, 0, 0)`;
                 ctx.fillStyle = `rgb(${segId}, 0, 0)`; 
             } else {
-                // Visual Color
                 ctx.strokeStyle = visualColor;
                 ctx.fillStyle = visualColor;
             }
@@ -421,11 +436,9 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         ctx.moveTo(p1.x, p1.y);
         ctx.lineTo(p2.x, p2.y);
         
-        // Multi-stroke for mask only (alpha saturation)
         const passes = (isMask && !isEraser) ? 8 : 1;
         for (let i = 0; i < passes; i++) ctx.stroke();
 
-        // Round caps to fill gaps on single dots
         ctx.beginPath();
         ctx.arc(p1.x, p1.y, size/2, 0, Math.PI*2);
         ctx.fill();
@@ -440,12 +453,11 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      // 1. Draw to Data Layer
      drawStroke(ctxMask, true);
 
-     // 2. Draw to Visual Layer (Instant Feedback)
+     // 2. Draw to Visual Layer
      if (ctxVisual) drawStroke(ctxVisual, false);
      
-     // IMPORTANT: Do NOT invalidate cache (delete). 
-     // We manually updated it, so just trigger a re-render to composite it to screen.
-     setRenderTick(t => t + 1);
+     // 3. FORCE IMMEDIATE RENDER TO SCREEN (Bypasses React State Cycle for smooth lines)
+     renderScene();
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
