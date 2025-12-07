@@ -3,6 +3,7 @@ import React, { useState, useRef } from 'react';
 import { X, Mic, StopCircle, Sparkles, Copy, Check, Download, FileText, Loader2, AlertTriangle } from 'lucide-react';
 import { generateRadiologyReport, transcribeAudio, ReportPayload } from '../services/aiService';
 import { Measurement } from '../types';
+import { renderMarkdown } from '../utils/markdownUtils';
 
 interface AiReportModalProps {
   isOpen: boolean;
@@ -199,12 +200,18 @@ const AiReportModal: React.FC<AiReportModalProps> = ({
                         </div>
                     )}
                 </div>
-                <div className="flex-1 bg-slate-900 border border-slate-800 rounded p-4 overflow-y-auto text-sm text-slate-300 whitespace-pre-wrap font-mono">
-                    {isGenerating ? (
-                        <div className="h-full flex flex-col items-center justify-center text-slate-600">
-                            <Sparkles className="w-8 h-8 animate-pulse mb-2" /> Generating...
-                        </div>
-                    ) : reportResult || <span className="text-slate-600">Report will appear here.</span>}
+                <div className="flex-1 bg-slate-900 border border-slate-800 rounded p-4 overflow-y-auto text-sm text-slate-300">
+                  {isGenerating ? (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-600">
+                      <Sparkles className="w-8 h-8 animate-pulse mb-2" /> Generating...
+                    </div>
+                  ) : reportResult ? (
+                    <div className="prose prose-invert max-w-none">
+                      {renderMarkdown(reportResult)}
+                    </div>
+                  ) : (
+                    <span className="text-slate-600">Report will appear here.</span>
+                  )}
                 </div>
             </div>
         </div>

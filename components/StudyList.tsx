@@ -366,9 +366,6 @@ const StudyList: React.FC<StudyListProps> = ({
                      <div className="flex items-center gap-2">
                        <User className="w-4 h-4 text-slate-500" />
                        {study.patientName}
-                       {isRecommended && (
-                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-600 text-white font-bold ml-2">DEMO</span>
-                       )}
                      </div>
                    </td>
                    <td className="px-6 py-4 text-slate-400 font-mono text-xs">{study.patientId}</td>
