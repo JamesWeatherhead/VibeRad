@@ -30,11 +30,15 @@ const AiReportModal: React.FC<AiReportModalProps> = ({
   onCaptureScreen
 }) => {
   // Input State - Single Note Field
-  const [notes, setNotes] = useState(`Axial ${studyMetadata.modality} of ${studyMetadata.description}. Findings: `);
+  const [notes, setNotes] = useState(
+    `Teaching notes for this ${studyMetadata.modality} study (${studyMetadata.description}). ` +
+    `What I see, what I think, and what I want to learn: `
+  );
   
   // Audio State
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [recordingError, setRecordingError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
@@ -47,6 +51,7 @@ const AiReportModal: React.FC<AiReportModalProps> = ({
 
   // --- AUDIO LOGIC ---
   const startRecording = async () => {
+    setRecordingError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
@@ -65,6 +70,7 @@ const AiReportModal: React.FC<AiReportModalProps> = ({
           setNotes(prev => prev + (prev ? ' ' : '') + text);
         } catch (e) {
           console.error("Transcription failed", e);
+          setRecordingError("Transcription failed. Please try again.");
         } finally {
           setIsTranscribing(false);
         }
@@ -73,8 +79,15 @@ const AiReportModal: React.FC<AiReportModalProps> = ({
 
       mediaRecorder.start();
       setIsRecording(true);
-    } catch (e) {
-      alert("Microphone access denied.");
+    } catch (e: any) {
+      console.error("Microphone access error:", e);
+      if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+        setRecordingError("Microphone permission denied.");
+      } else if (e.name === 'NotFoundError') {
+        setRecordingError("No microphone found.");
+      } else {
+        setRecordingError("Could not access microphone.");
+      }
     }
   };
 
@@ -133,11 +146,11 @@ const AiReportModal: React.FC<AiReportModalProps> = ({
 
   const downloadReport = () => {
       if (!reportResult) return;
-      const blob = new Blob([reportResult], { type: 'text/plain' });
+      const blob = new Blob([reportResult], { type: 'text/markdown' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `viberad_report.txt`;
+      a.download = `viberad_teaching_summary.md`;
       a.click();
   };
 
@@ -147,7 +160,7 @@ const AiReportModal: React.FC<AiReportModalProps> = ({
         {/* Header */}
         <div className="p-4 border-b border-slate-700 bg-slate-950 flex justify-between items-center">
             <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-400" /> AI Report Engine
+                <Sparkles className="w-5 h-5 text-indigo-400" /> AI Teaching Summary
             </h3>
             <button onClick={onClose}><X className="w-6 h-6 text-slate-400" /></button>
         </div>
@@ -157,12 +170,19 @@ const AiReportModal: React.FC<AiReportModalProps> = ({
             {/* Left: Input */}
             <div className="w-full md:w-1/2 p-4 flex flex-col border-r border-slate-800 bg-slate-900">
                 <div className="flex justify-between items-center mb-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Report Notes / Dictation</label>
-                    <button onClick={toggleRecording} className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-slate-300'}`}>
+                    <label className="text-xs font-bold text-slate-500 uppercase">Teaching Notes / Dictation</label>
+                    <button onClick={toggleRecording} className={`text-xs px-2 py-1 rounded flex items-center gap-1 transition-colors ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-slate-300 hover:text-white'}`}>
                         {isRecording ? <StopCircle className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
                         {isRecording ? 'Stop' : 'Dictate'}
                     </button>
                 </div>
+                
+                {recordingError && (
+                  <div className="mb-2 text-xs text-red-400 bg-red-950/30 border border-red-900/50 p-2 rounded flex items-center gap-2">
+                    <AlertTriangle className="w-3 h-3" /> {recordingError}
+                  </div>
+                )}
+
                 <div className="relative flex-1">
                     <textarea 
                         value={notes}
@@ -181,14 +201,14 @@ const AiReportModal: React.FC<AiReportModalProps> = ({
                     className="mt-4 w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold flex justify-center gap-2 disabled:opacity-50"
                 >
                     {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                    Generate Report
+                    Generate Teaching Summary
                 </button>
             </div>
 
             {/* Right: Output */}
             <div className="w-full md:w-1/2 p-4 bg-slate-950 flex flex-col">
                 <div className="flex justify-between items-center mb-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Generated Output</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">Generated Teaching Summary</label>
                     {reportResult && (
                         <div className="flex gap-2">
                             <button onClick={copyToClipboard} className="p-1 bg-slate-800 rounded text-slate-400 hover:text-white">
@@ -210,7 +230,7 @@ const AiReportModal: React.FC<AiReportModalProps> = ({
                       {renderMarkdown(reportResult)}
                     </div>
                   ) : (
-                    <span className="text-slate-600">Report will appear here.</span>
+                    <span className="text-slate-600">Teaching summary will appear here.</span>
                   )}
                 </div>
             </div>

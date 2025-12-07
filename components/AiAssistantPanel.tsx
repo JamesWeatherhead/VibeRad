@@ -140,7 +140,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
         </div>
 
         {!isThinking && currentSuggestions.length > 0 && (
-            <div className="px-4 pb-3 flex flex-col gap-2 flex-shrink-0">
+            <div className="px-4 pb-4 flex flex-col gap-2 flex-shrink-0 border-t border-transparent">
                 <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase">
                      <span className="flex items-center gap-1"><MessageSquarePlus className="w-3 h-3" /> Suggested Follow-ups</span>
                      {isGeneratingSuggestions && <RefreshCw className="w-3 h-3 animate-spin" />}
@@ -155,25 +155,59 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
             </div>
         )}
 
-        <div className="p-3 bg-slate-900 border-t border-slate-800 space-y-3 flex-shrink-0">
-            <div className="flex gap-2 justify-center">
-                <button onClick={() => setMode('standard')} className={`px-3 py-1 rounded-full text-[10px] font-medium border ${mode === 'standard' ? 'bg-slate-700 border-slate-500 text-white' : 'border-slate-800 text-slate-500'}`}>Standard</button>
-                <button onClick={() => setMode('thinking')} className={`flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-medium border ${mode === 'thinking' ? 'bg-purple-900/50 border-purple-500 text-purple-200' : 'border-slate-800 text-slate-500'}`}><BrainCircuit className="w-3 h-3" /> Deep Think</button>
-                <button onClick={() => setMode('search')} className={`flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-medium border ${mode === 'search' ? 'bg-blue-900/50 border-blue-500 text-blue-200' : 'border-slate-800 text-slate-500'}`}><Globe className="w-3 h-3" /> Web Search</button>
+        <div className="p-4 bg-slate-900 border-t border-slate-800 flex-shrink-0">
+            {/* Mode Selection */}
+            <div className="flex gap-2 justify-center mb-4">
+                <button onClick={() => setMode('standard')} className={`px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'standard' ? 'bg-slate-700 border-slate-500 text-white' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}>Standard</button>
+                <button onClick={() => setMode('thinking')} className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'thinking' ? 'bg-purple-900/50 border-purple-500 text-purple-200' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}><BrainCircuit className="w-3 h-3" /> Deep Think</button>
+                <button onClick={() => setMode('search')} className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'search' ? 'bg-blue-900/50 border-blue-500 text-blue-200' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}><Globe className="w-3 h-3" /> Web Search</button>
             </div>
+
+            {/* Attached Image Preview */}
             {attachedScreenshot && (
-                <div className="relative inline-block border border-purple-500 rounded overflow-hidden shadow-lg group">
+                <div className="relative inline-block border border-purple-500 rounded overflow-hidden shadow-lg group mb-3">
                     <img src={attachedScreenshot} alt="Snapshot" className="h-16 w-auto opacity-80 group-hover:opacity-100 transition-opacity" />
                     <button onClick={() => setAttachedScreenshot(null)} className="absolute top-0 right-0 bg-black/50 hover:bg-red-500 text-white p-0.5"><X className="w-3 h-3" /></button>
                 </div>
             )}
-            <div className="relative flex gap-2">
-                <button onClick={handleCapture} disabled={!onCaptureScreen} className={`p-2 rounded-lg border ${attachedScreenshot ? 'bg-purple-900 border-purple-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}><Camera className="w-4.5 h-4.5" /></button>
+
+            {/* Input Area */}
+            <div className="relative flex gap-3 items-center">
+                <button 
+                    onClick={handleCapture} 
+                    disabled={!onCaptureScreen} 
+                    title="Attach the current slice so Gemini can see this image"
+                    aria-label="Attach the current slice so Gemini can see this image"
+                    className={`p-2.5 rounded-lg border transition-all ${attachedScreenshot ? 'bg-purple-900 border-purple-500 text-white ring-2 ring-purple-500/50' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'}`}
+                >
+                    <Camera className="w-5 h-5" />
+                </button>
+                
                 <div className="relative flex-1">
-                    <input className="w-full bg-slate-950 border border-slate-700 rounded-lg pr-10 pl-3 py-2 text-sm focus:border-purple-500 focus:outline-none text-slate-200" placeholder={mode === 'thinking' ? "Ask complex question..." : "Ask a question..."} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} disabled={isThinking}/>
-                    <button onClick={() => handleSendMessage()} disabled={(!input.trim() && !attachedScreenshot) || isThinking} className="absolute right-2 top-2 p-0.5 text-purple-500 hover:text-purple-400 disabled:opacity-50"><Send className="w-4 h-4" /></button>
+                    <input 
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg pr-10 pl-4 py-2.5 text-sm focus:border-purple-500 focus:outline-none text-slate-200 placeholder:text-slate-600 shadow-inner" 
+                        placeholder={mode === 'thinking' ? "Ask complex question..." : "Ask a question..."} 
+                        value={input} 
+                        onChange={(e) => setInput(e.target.value)} 
+                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} 
+                        disabled={isThinking}
+                    />
+                    <button 
+                        onClick={() => handleSendMessage()} 
+                        disabled={(!input.trim() && !attachedScreenshot) || isThinking} 
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-purple-500 hover:text-purple-400 disabled:opacity-50 transition-colors"
+                    >
+                        <Send className="w-4 h-4" />
+                    </button>
                 </div>
             </div>
+
+            {/* Helper Tip */}
+            {!attachedScreenshot && (
+                <div className="mt-3 text-[10px] text-slate-500 text-center">
+                    Tip: Use the camera to send the current slice to the AI.
+                </div>
+            )}
         </div>
       </div>
     </div>

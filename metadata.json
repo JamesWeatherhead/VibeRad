@@ -1,5 +1,7 @@
 {
   "name": "VibeRad",
   "description": "VibeRad is an AI Studio DICOM app supercharged by Gemini 3 Pro's advanced reasoning & native multimodality so anyone can explore radiology.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }
