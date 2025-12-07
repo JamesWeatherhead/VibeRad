@@ -87,7 +87,7 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
     }`;
 
   return (
-    <div className="w-80 bg-slate-950 border-l border-slate-800 flex flex-col h-full">
+    <div className="w-full bg-slate-950 border-l border-slate-800 flex flex-col h-full">
       {/* Header */}
       <div className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between">
         <div className="flex items-center gap-2 text-slate-100 font-bold">
