@@ -295,6 +295,7 @@ const App: React.FC = () => {
                       seriesList={studySeries}
                       activeSeriesId={activeSeries?.id}
                       onSelectSeries={setActiveSeries}
+                      dicomConfig={dicomConfig}
                     />
                   </div>
               </div>

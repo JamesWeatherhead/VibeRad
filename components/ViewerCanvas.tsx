@@ -1,6 +1,5 @@
-
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
-import { Series, ToolMode, ViewportState, Point, Measurement, DicomWebConfig, SegmentationLayer, ViewerHandle } from '../types';
+import { Series, ToolMode, ViewportState, Point, Measurement, DicomWebConfig, SegmentationLayer, ViewerHandle, Segment } from '../types';
 import { DEFAULT_VIEWPORT_STATE } from '../constants';
 import { fetchDicomImageBlob } from '../services/dicomService';
 import { Loader2, AlertTriangle } from 'lucide-react';
@@ -39,8 +38,10 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
-  // Segmentation Mask Cache (SliceIndex -> Offscreen Canvas)
+  // Segmentation Data: Stores the ID Map (Red Channel = Segment ID)
   const maskCacheRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
+  // Segmentation Visual: Stores the colored, visible output
+  const renderCacheRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
   
   // Local Viewport State (Pan/Zoom/WWWC only)
   const [viewport, setViewport] = useState<ViewportState>(DEFAULT_VIEWPORT_STATE);
@@ -50,15 +51,19 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentImageBitmap, setCurrentImageBitmap] = useState<HTMLImageElement | null>(null);
   
-  // Interaction State
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<Point | null>(null);
-  const [lastDrawPoint, setLastDrawPoint] = useState<Point | null>(null);
+  // Interaction State (Refs for synchronous updates during high-frequency events)
+  const interactionRef = useRef({
+    isDragging: false,
+    dragStart: null as Point | null,
+    lastDrawPoint: null as Point | null,
+    activeButton: null as number | null
+  });
+
+  // State for UI/Cursor feedback only
+  const [isDraggingState, setIsDraggingState] = useState(false); 
+  
   const [draftMeasurement, setDraftMeasurement] = useState<Measurement | null>(null);
   
-  // Track which mouse button is held for temporary overrides (0=Left, 1=Middle, 2=Right)
-  const [activeMouseButton, setActiveMouseButton] = useState<number | null>(null);
-
   // Expose Screenshot Capability
   useImperativeHandle(ref, () => ({
     captureScreenshot: () => {
@@ -78,11 +83,19 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
       setLoadError(null);
       // Clear masks for new series
       maskCacheRef.current.clear();
+      renderCacheRef.current.clear();
       setRenderTick(0);
     }
   }, [series?.id]);
 
-  // 2. Fetch Image Data
+  // 2. Invalidate Render Cache when Segment Definitions Change (Visibility/Color)
+  useEffect(() => {
+    // When segments array changes (toggle visibility, add segment), we must rebuild visuals
+    renderCacheRef.current.clear();
+    setRenderTick(t => t + 1);
+  }, [segmentationLayer.segments]);
+
+  // 3. Fetch Image Data
   useEffect(() => {
     let active = true;
     let objectUrl: string | null = null;
@@ -148,7 +161,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
     };
   }, [series, sliceIndex, connectionType, dicomConfig]);
 
-  // 3. Render Loop
+  // 4. Render Loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -221,7 +234,63 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
   }, [viewport, currentImageBitmap, measurements, activeMeasurementId, draftMeasurement, sliceIndex, segmentationLayer, renderTick]);
 
-  // Real LabelMap Rendering (From Cache)
+  // --- RENDERING HELPERS ---
+
+  const getRenderCanvas = (sliceIdx: number, w: number, h: number, segments: Segment[]) => {
+      // 1. Check Visual Cache
+      if (renderCacheRef.current.has(sliceIdx)) {
+          return renderCacheRef.current.get(sliceIdx);
+      }
+
+      // 2. Check Data Mask (ID Map)
+      const maskCanvas = maskCacheRef.current.get(sliceIdx);
+      if (!maskCanvas) return null;
+
+      // 3. Rebuild Visual Cache from Data Mask
+      const renderCanvas = document.createElement('canvas');
+      renderCanvas.width = w; renderCanvas.height = h;
+      const rCtx = renderCanvas.getContext('2d');
+      const mCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+      if (!rCtx || !mCtx) return null;
+
+      const maskData = mCtx.getImageData(0, 0, w, h);
+      const renderData = rCtx.createImageData(w, h); // Initialized to transparent black
+
+      // Create lookup map for speed
+      const segMap = new Map<number, {r:number, g:number, b:number}>();
+      segments.forEach(s => {
+         if (s.isVisible) {
+             segMap.set(s.id, { r: s.color[0], g: s.color[1], b: s.color[2] });
+         }
+      });
+
+      const src = maskData.data;
+      const dst = renderData.data;
+      const len = src.length;
+
+      // Pixel Iteration: Map ID -> Color
+      for (let i = 0; i < len; i += 4) {
+          const alpha = src[i+3];
+          
+          if (alpha > 200) { 
+              // Recover ID directly from Red channel.
+              const id = src[i];
+              
+              const color = segMap.get(id);
+              if (color) {
+                  dst[i] = color.r;
+                  dst[i+1] = color.g;
+                  dst[i+2] = color.b;
+                  dst[i+3] = 255; 
+              }
+          }
+      }
+
+      rCtx.putImageData(renderData, 0, 0);
+      renderCacheRef.current.set(sliceIdx, renderCanvas);
+      return renderCanvas;
+  };
+
   const renderLabelMap = (
       ctx: CanvasRenderingContext2D, 
       width: number, 
@@ -229,16 +298,16 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
       sliceIdx: number, 
       layer: SegmentationLayer
   ) => {
-      const maskCanvas = maskCacheRef.current.get(sliceIdx);
-      if (maskCanvas) {
+      const visualCanvas = getRenderCanvas(sliceIdx, width, height, layer.segments);
+      if (visualCanvas) {
          ctx.save();
          ctx.globalAlpha = layer.opacity;
-         ctx.drawImage(maskCanvas, 0, 0, width, height);
+         ctx.drawImage(visualCanvas, 0, 0, width, height);
          ctx.restore();
       }
   };
 
-  // Helper to get or create the mask canvas for the current slice
+  // Helper to get or create the mask canvas (ID Map) for the current slice
   const getActiveMaskCanvas = (width: number, height: number): HTMLCanvasElement => {
      if (!maskCacheRef.current.has(sliceIndex)) {
         const c = document.createElement('canvas');
@@ -267,17 +336,19 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault(); // Stop text selection
-    setIsDragging(true);
-    setDragStart({ x: e.clientX, y: e.clientY });
-    setActiveMouseButton(e.button);
+    e.preventDefault(); 
+    
+    // Update synchronous interaction state
+    interactionRef.current.isDragging = true;
+    interactionRef.current.dragStart = { x: e.clientX, y: e.clientY };
+    interactionRef.current.activeButton = e.button;
+    
+    setIsDraggingState(true);
 
-    // If middle click, we treat it as Pan regardless of tool
     if (e.button === 1) return;
 
     const p = getCanvasPoint(e);
 
-    // Handle Left Click Tools
     if (e.button === 0) {
         if (activeTool === ToolMode.MEASURE) {
             setDraftMeasurement({
@@ -288,11 +359,11 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
             });
         }
         
-        // Support BRUSH or ERASER
         const isPaintTool = activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER;
         if (isPaintTool && segmentationLayer.isVisible && currentImageBitmap) {
             if (activeTool === ToolMode.BRUSH && !segmentationLayer.activeSegmentId) return;
-            setLastDrawPoint(p);
+            
+            interactionRef.current.lastDrawPoint = p;
             paintOnMask(p, p);
         }
     }
@@ -304,88 +375,131 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      const h = currentImageBitmap.height || 512;
      
      const maskCanvas = getActiveMaskCanvas(w, h);
-     const ctx = maskCanvas.getContext('2d');
-     if (!ctx) return;
-
-     ctx.save();
+     const ctxMask = maskCanvas.getContext('2d');
+     if (!ctxMask) return;
      
-     if (activeTool === ToolMode.ERASER) {
-         ctx.globalCompositeOperation = 'destination-out';
-         ctx.strokeStyle = 'rgba(0,0,0,1)';
-         ctx.fillStyle = 'rgba(0,0,0,1)';
-     } else {
-         ctx.globalCompositeOperation = 'source-over';
-         const seg = segmentationLayer.segments.find(s => s.id === segmentationLayer.activeSegmentId);
-         const color = seg ? `rgb(${seg.color.join(',')})` : 'red';
-         ctx.strokeStyle = color;
-         ctx.fillStyle = color;
+     // OPTIMIZATION: Get the visual canvas to draw directly onto it
+     // This avoids the expensive getRenderCanvas rebuild logic for every mouse move
+     const visualCanvas = getRenderCanvas(sliceIndex, w, h, segmentationLayer.segments);
+     const ctxVisual = visualCanvas?.getContext('2d');
+
+     const isEraser = activeTool === ToolMode.ERASER;
+     const size = segmentationLayer.brushSize;
+     const segId = segmentationLayer.activeSegmentId;
+
+     // Identify visual color
+     let visualColor = 'rgba(0,0,0,0)';
+     if (!isEraser && segId) {
+         const seg = segmentationLayer.segments.find(s => s.id === segId);
+         if (seg) visualColor = `rgb(${seg.color.join(',')})`;
      }
 
-     ctx.lineCap = 'round';
-     ctx.lineJoin = 'round';
-     ctx.lineWidth = segmentationLayer.brushSize; 
+     const drawStroke = (ctx: CanvasRenderingContext2D, isMask: boolean) => {
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = size;
+
+        if (isEraser) {
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.strokeStyle = 'rgba(0,0,0,1)';
+            ctx.fillStyle = 'rgba(0,0,0,1)';
+        } else {
+            ctx.globalCompositeOperation = 'source-over';
+            if (isMask) {
+                // ID in Red Channel
+                ctx.strokeStyle = `rgb(${segId}, 0, 0)`;
+                ctx.fillStyle = `rgb(${segId}, 0, 0)`; 
+            } else {
+                // Visual Color
+                ctx.strokeStyle = visualColor;
+                ctx.fillStyle = visualColor;
+            }
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        
+        // Multi-stroke for mask only (alpha saturation)
+        const passes = (isMask && !isEraser) ? 8 : 1;
+        for (let i = 0; i < passes; i++) ctx.stroke();
+
+        // Round caps to fill gaps on single dots
+        ctx.beginPath();
+        ctx.arc(p1.x, p1.y, size/2, 0, Math.PI*2);
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.arc(p2.x, p2.y, size/2, 0, Math.PI*2);
+        ctx.fill();
+        
+        ctx.restore();
+     };
+
+     // 1. Draw to Data Layer
+     drawStroke(ctxMask, true);
+
+     // 2. Draw to Visual Layer (Instant Feedback)
+     if (ctxVisual) drawStroke(ctxVisual, false);
      
-     ctx.beginPath();
-     ctx.moveTo(p1.x, p1.y);
-     ctx.lineTo(p2.x, p2.y);
-     ctx.stroke();
-     
-     ctx.restore();
+     // IMPORTANT: Do NOT invalidate cache (delete). 
+     // We manually updated it, so just trigger a re-render to composite it to screen.
      setRenderTick(t => t + 1);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
+    if (!interactionRef.current.isDragging) return;
     
-    // Always Pan if Middle Mouse Button (1) is held
-    if (activeMouseButton === 1) {
-        const dx = e.clientX - (dragStart?.x || e.clientX);
-        const dy = e.clientY - (dragStart?.y || e.clientY);
+    const { activeButton, dragStart } = interactionRef.current;
+    
+    if (activeButton === 1 && dragStart) {
+        const dx = e.clientX - dragStart.x;
+        const dy = e.clientY - dragStart.y;
         setViewport(p => ({ ...p, pan: { x: p.pan.x + dx, y: p.pan.y + dy }}));
-        setDragStart({ x: e.clientX, y: e.clientY });
+        interactionRef.current.dragStart = { x: e.clientX, y: e.clientY };
         return;
     }
 
-    // Paint Tools
-    if (activeMouseButton === 0 && (activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER) && lastDrawPoint) {
-       const p = getCanvasPoint(e);
-       paintOnMask(lastDrawPoint, p);
-       setLastDrawPoint(p);
-       return;
+    if (activeButton === 0 && (activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER)) {
+        const lastP = interactionRef.current.lastDrawPoint;
+        if (lastP) {
+           const p = getCanvasPoint(e);
+           paintOnMask(lastP, p);
+           interactionRef.current.lastDrawPoint = p;
+           return;
+        }
     }
 
     if (!dragStart || !series) return;
     const dx = e.clientX - dragStart.x;
     const dy = e.clientY - dragStart.y;
 
-    if (activeTool === ToolMode.PAN && activeMouseButton === 0) {
+    if (activeTool === ToolMode.PAN && activeButton === 0) {
       setViewport(p => ({ ...p, pan: { x: p.pan.x + dx, y: p.pan.y + dy }}));
-      setDragStart({ x: e.clientX, y: e.clientY });
-    } else if (activeTool === ToolMode.ZOOM && activeMouseButton === 0) {
-      // Smoother multiplicative zoom
-      // Drag Down (dy > 0) -> Zoom Out (< 1)
-      // Drag Up (dy < 0) -> Zoom In (> 1)
+      interactionRef.current.dragStart = { x: e.clientX, y: e.clientY };
+    } else if (activeTool === ToolMode.ZOOM && activeButton === 0) {
       const zoomFactor = 1 + (dy * -0.005);
       setViewport(p => ({ ...p, scale: Math.max(0.1, p.scale * zoomFactor) }));
-      setDragStart({ x: e.clientX, y: e.clientY });
-    } else if (activeTool === ToolMode.WINDOW_LEVEL && activeMouseButton === 0) {
+      interactionRef.current.dragStart = { x: e.clientX, y: e.clientY };
+    } else if (activeTool === ToolMode.WINDOW_LEVEL && activeButton === 0) {
       setViewport(p => ({ 
         ...p, 
         windowWidth: p.windowWidth + dx * 2, 
         windowCenter: p.windowCenter - dy * 2 
       }));
-      setDragStart({ x: e.clientX, y: e.clientY });
-    } else if (activeTool === ToolMode.SCROLL && activeMouseButton === 0) {
+      interactionRef.current.dragStart = { x: e.clientX, y: e.clientY };
+    } else if (activeTool === ToolMode.SCROLL && activeButton === 0) {
       if (Math.abs(dy) > 10) {
         const dir = dy > 0 ? 1 : -1;
         const max = series.instances.length || series.instanceCount;
         const next = Math.max(0, Math.min(max - 1, sliceIndex + dir));
         if (next !== sliceIndex) {
             onSliceChange(next);
-            setDragStart({ x: e.clientX, y: e.clientY });
+            interactionRef.current.dragStart = { x: e.clientX, y: e.clientY };
         }
       }
-    } else if (activeTool === ToolMode.MEASURE && draftMeasurement && activeMouseButton === 0) {
+    } else if (activeTool === ToolMode.MEASURE && draftMeasurement && activeButton === 0) {
       const p = getCanvasPoint(e);
       const dist = Math.sqrt(Math.pow(p.x - draftMeasurement.start.x, 2) + Math.pow(p.y - draftMeasurement.start.y, 2));
       setDraftMeasurement({ ...draftMeasurement, end: p, value: dist });
@@ -393,10 +507,12 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
-    setDragStart(null);
-    setLastDrawPoint(null);
-    setActiveMouseButton(null);
+    interactionRef.current.isDragging = false;
+    interactionRef.current.dragStart = null;
+    interactionRef.current.lastDrawPoint = null;
+    interactionRef.current.activeButton = null;
+    
+    setIsDraggingState(false);
 
     if (activeTool === ToolMode.MEASURE && draftMeasurement) {
       if (draftMeasurement.value > 5) {
@@ -411,21 +527,15 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   };
   
   const handleWheel = (e: React.WheelEvent) => {
-     // UX IMPROVEMENT:
-     // - Ctrl/Cmd + Wheel -> Zoom
-     // - Tool == ZOOM -> Zoom
-     // - Otherwise -> Scroll Slices
      const isZoomAction = e.ctrlKey || e.metaKey || activeTool === ToolMode.ZOOM;
 
      if (isZoomAction) {
-         // Standard wheel zoom: Pull (positive) = Zoom Out, Push (negative) = Zoom In
          const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
          setViewport(p => ({ 
              ...p, 
-             scale: Math.max(0.1, Math.min(20, p.scale * zoomFactor)) 
+             scale: Math.max(0.1, Math.min(20, p.scale * zoomFactor) ) 
          }));
      } else {
-        // Scroll Slices
         const dir = e.deltaY > 0 ? 1 : -1;
         const max = series?.instances.length || series?.instanceCount || 0;
         const next = Math.max(0, Math.min(max - 1, sliceIndex + dir));
@@ -445,9 +555,8 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
   const scrollPct = series.instanceCount > 0 ? (sliceIndex / series.instanceCount) * 100 : 0;
   
-  // Dynamic cursor
   let cursorStyle = 'default';
-  if (activeTool === ToolMode.PAN || activeMouseButton === 1) cursorStyle = 'move';
+  if (activeTool === ToolMode.PAN || (interactionRef.current.activeButton === 1 && isDraggingState)) cursorStyle = 'move';
   else if (activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER) cursorStyle = 'crosshair';
   else if (activeTool === ToolMode.ZOOM) cursorStyle = 'zoom-in';
 
@@ -456,7 +565,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         className="flex-1 bg-black relative overflow-hidden select-none" 
         ref={containerRef} 
         onWheel={handleWheel}
-        onContextMenu={(e) => e.preventDefault()} // Disable context menu for right/middle click actions
+        onContextMenu={(e) => e.preventDefault()} 
     >
       <canvas
         ref={canvasRef}

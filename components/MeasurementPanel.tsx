@@ -31,7 +31,7 @@ const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
   studyMetadata
 }) => {
   return (
-    <div className="w-80 bg-slate-950 border-l border-slate-800 flex flex-col h-full relative">
+    <div className="w-full bg-slate-950 flex flex-col h-full relative">
       {/* Header */}
       <div className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between">
         <div className="flex items-center gap-2 text-slate-100 font-bold">
@@ -44,7 +44,7 @@ const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-3">
         {measurements.length === 0 ? (
           <div className="text-center mt-10 opacity-40">
             <Target className="w-12 h-12 mx-auto mb-3 text-slate-600" />
