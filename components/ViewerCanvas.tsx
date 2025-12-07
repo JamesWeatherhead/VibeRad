@@ -279,7 +279,12 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
       });
     }
     
-    if (activeTool === ToolMode.BRUSH && segmentationLayer.isVisible && segmentationLayer.activeSegmentId && currentImageBitmap) {
+    // Support BRUSH or ERASER
+    const isPaintTool = activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER;
+    if (isPaintTool && segmentationLayer.isVisible && currentImageBitmap) {
+       // Only block BRUSH if no segment selected, ERASER works always
+       if (activeTool === ToolMode.BRUSH && !segmentationLayer.activeSegmentId) return;
+
        setLastDrawPoint(p);
        // Initial dot
        paintOnMask(p, p);
@@ -287,7 +292,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   };
 
   const paintOnMask = (p1: Point, p2: Point) => {
-     if (!currentImageBitmap || !segmentationLayer.activeSegmentId) return;
+     if (!currentImageBitmap) return;
      const w = currentImageBitmap.width || 512;
      const h = currentImageBitmap.height || 512;
      
@@ -295,12 +300,23 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      const ctx = maskCanvas.getContext('2d');
      if (!ctx) return;
 
-     // Find color
-     const seg = segmentationLayer.segments.find(s => s.id === segmentationLayer.activeSegmentId);
-     const color = seg ? `rgb(${seg.color.join(',')})` : 'red';
+     ctx.save();
+     
+     // Set styles based on tool
+     if (activeTool === ToolMode.ERASER) {
+         ctx.globalCompositeOperation = 'destination-out';
+         // Color doesn't matter for destination-out, only alpha (must be opaque to erase fully)
+         ctx.strokeStyle = 'rgba(0,0,0,1)';
+         ctx.fillStyle = 'rgba(0,0,0,1)';
+     } else {
+         ctx.globalCompositeOperation = 'source-over';
+         // Find color
+         const seg = segmentationLayer.segments.find(s => s.id === segmentationLayer.activeSegmentId);
+         const color = seg ? `rgb(${seg.color.join(',')})` : 'red';
+         ctx.strokeStyle = color;
+         ctx.fillStyle = color;
+     }
 
-     ctx.strokeStyle = color;
-     ctx.fillStyle = color;
      ctx.lineCap = 'round';
      ctx.lineJoin = 'round';
      // Use dynamic brush size
@@ -311,6 +327,8 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      ctx.lineTo(p2.x, p2.y);
      ctx.stroke();
      
+     ctx.restore();
+     
      // Trigger re-render of the main canvas to show changes
      setRenderTick(t => t + 1);
   };
@@ -318,8 +336,8 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging) return;
     
-    // BRUSH logic handles its own coordinates and rendering triggers
-    if (activeTool === ToolMode.BRUSH && lastDrawPoint) {
+    // BRUSH/ERASER logic handles its own coordinates and rendering triggers
+    if ((activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER) && lastDrawPoint) {
        const p = getCanvasPoint(e);
        paintOnMask(lastDrawPoint, p);
        setLastDrawPoint(p);
@@ -401,6 +419,9 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
   // Calculate visual scrollbar height
   const scrollPct = series.instanceCount > 0 ? (sliceIndex / series.instanceCount) * 100 : 0;
+  
+  const isPaintOrErase = activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER;
+  const cursorStyle = activeTool === ToolMode.PAN ? 'move' : isPaintOrErase ? 'crosshair' : 'default';
 
   return (
     <div className="flex-1 bg-black relative overflow-hidden select-none" ref={containerRef} onWheel={handleWheel}>
@@ -413,7 +434,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         style={{ 
-          cursor: activeTool === ToolMode.PAN ? 'move' : activeTool === ToolMode.BRUSH ? 'crosshair' : 'default',
+          cursor: cursorStyle,
           filter: getFilterStyle()
         }}
         className="block w-full h-full"

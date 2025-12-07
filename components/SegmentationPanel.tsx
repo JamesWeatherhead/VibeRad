@@ -1,7 +1,15 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import { SegmentationLayer, Segment, ToolMode } from '../types';
-import { Eye, EyeOff, Layers, Settings2, Activity, Brush, MousePointer2, Circle } from 'lucide-react';
+import {
+  Eye,
+  EyeOff,
+  Activity,
+  Brush,
+  MousePointer2,
+  Circle,
+  Plus,
+  Eraser,
+} from 'lucide-react';
 
 interface SegmentationPanelProps {
   layer: SegmentationLayer;
@@ -10,7 +18,15 @@ interface SegmentationPanelProps {
   onSelectTool: (tool: ToolMode) => void;
 }
 
-const SegmentationPanel: React.FC<SegmentationPanelProps> = ({ layer, onChange, activeTool, onSelectTool }) => {
+const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
+  layer,
+  onChange,
+  activeTool,
+  onSelectTool,
+}) => {
+  // New label form state
+  const [newLabelName, setNewLabelName] = useState('');
+  const [newLabelColor, setNewLabelColor] = useState<string>('#34d399'); // emerald-ish default
 
   const toggleGlobalVisibility = () => {
     onChange({ ...layer, isVisible: !layer.isVisible });
@@ -22,19 +38,59 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({ layer, onChange, 
 
   const toggleSegment = (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
-    const updatedSegments = layer.segments.map(s => 
-      s.id === id ? { ...s, isVisible: !s.isVisible } : s
+    const updatedSegments = layer.segments.map((s) =>
+      s.id === id ? { ...s, isVisible: !s.isVisible } : s,
     );
     onChange({ ...layer, segments: updatedSegments });
   };
 
   const setActiveSegment = (id: number) => {
     onChange({ ...layer, activeSegmentId: id });
-    // Automatically switch to Brush tool when selecting a segment to paint
+    // Automatically switch to Brush when picking a segment
     if (activeTool !== ToolMode.BRUSH) {
-        onSelectTool(ToolMode.BRUSH);
+      onSelectTool(ToolMode.BRUSH);
     }
   };
+
+  const hexToRgb = (hex: string): [number, number, number] => {
+    const clean = hex.replace('#', '');
+    const bigint = parseInt(clean, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return [r, g, b];
+  };
+
+  const handleAddSegment = () => {
+    const label =
+      newLabelName.trim() || `Label ${layer.segments.length + 1}`;
+    const color = hexToRgb(newLabelColor);
+
+    const newSegment: Segment = {
+      id:
+        layer.segments.reduce(
+          (max, s) => Math.max(max, s.id),
+          0,
+        ) + 1,
+      label,
+      color,
+      isVisible: true,
+    };
+
+    onChange({
+      ...layer,
+      segments: [...layer.segments, newSegment],
+      activeSegmentId: newSegment.id,
+    });
+    setNewLabelName('');
+  };
+
+  const toolButtonClasses = (tool: ToolMode) =>
+    `flex-1 flex items-center justify-center gap-1 py-1.5 rounded-full text-[10px] font-bold border transition-colors ${
+      activeTool === tool
+        ? 'bg-emerald-600 border-emerald-500 text-white'
+        : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+    }`;
 
   return (
     <div className="w-80 bg-slate-950 border-l border-slate-800 flex flex-col h-full">
@@ -45,112 +101,197 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({ layer, onChange, 
           <span>Segmentation</span>
         </div>
         <div className="flex items-center gap-2">
-            <button 
-                onClick={toggleGlobalVisibility}
-                className={`p-1.5 rounded transition-colors ${layer.isVisible ? 'text-emerald-400 bg-emerald-950' : 'text-slate-500 hover:text-slate-300'}`}
-                title={layer.isVisible ? "Hide Segmentation Layer" : "Show Segmentation Layer"}
-            >
-                {layer.isVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-            </button>
+          <button
+            onClick={toggleGlobalVisibility}
+            className={`p-1.5 rounded transition-colors ${
+              layer.isVisible
+                ? 'text-emerald-400 bg-emerald-950'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+            title={
+              layer.isVisible
+                ? 'Hide Segmentation Layer'
+                : 'Show Segmentation Layer'
+            }
+          >
+            {layer.isVisible ? (
+              <Eye className="w-4 h-4" />
+            ) : (
+              <EyeOff className="w-4 h-4" />
+            )}
+          </button>
         </div>
       </div>
 
       {/* Layer Controls */}
       <div className="p-4 border-b border-slate-800 bg-slate-900/50 space-y-3">
-         <div className="flex items-center justify-between">
-             <button 
-                onClick={() => onSelectTool(activeTool === ToolMode.BRUSH ? ToolMode.POINTER : ToolMode.BRUSH)}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-xs font-bold uppercase transition-colors border ${
-                    activeTool === ToolMode.BRUSH 
-                    ? 'bg-emerald-600 border-emerald-500 text-white' 
-                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
-                }`}
-             >
-                <Brush className="w-3.5 h-3.5" />
-                {activeTool === ToolMode.BRUSH ? 'Painting Active' : 'Start Painting'}
-             </button>
-         </div>
+        {/* Tool mode buttons */}
+        <div className="flex items-center justify-between gap-2">
+          <button
+            onClick={() => onSelectTool(ToolMode.POINTER)}
+            className={toolButtonClasses(ToolMode.POINTER)}
+            title="Pointer / select"
+          >
+            <MousePointer2 className="w-3.5 h-3.5" />
+            Pointer
+          </button>
+          <button
+            onClick={() => onSelectTool(ToolMode.BRUSH)}
+            className={toolButtonClasses(ToolMode.BRUSH)}
+            title="Paint with active label"
+          >
+            <Brush className="w-3.5 h-3.5" />
+            Brush
+          </button>
+          <button
+            onClick={() => onSelectTool(ToolMode.ERASER)}
+            className={toolButtonClasses(ToolMode.ERASER)}
+            title="Erase segmentation from pixels"
+          >
+            <Eraser className="w-3.5 h-3.5" />
+            Eraser
+          </button>
+        </div>
 
-         <div>
-            <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                    <Settings2 className="w-3 h-3" />
-                    Global Opacity
-                </span>
-                <span className="text-xs font-mono text-slate-400">{(layer.opacity * 100).toFixed(0)}%</span>
-            </div>
-            <input 
-                type="range" 
-                min="0" max="1" step="0.05" 
-                value={layer.opacity}
-                onChange={handleOpacityChange}
-                className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500 mb-4"
-            />
+        {/* Opacity + brush size */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
+              <Circle className="w-3 h-3" />
+              Global Opacity
+            </span>
+            <span className="text-xs font-mono text-slate-400">
+              {(layer.opacity * 100).toFixed(0)}%
+            </span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={layer.opacity}
+            onChange={handleOpacityChange}
+            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500 mb-4"
+          />
 
-            <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                    <Circle className="w-3 h-3" />
-                    Brush Size
-                </span>
-                <span className="text-xs font-mono text-slate-400">{layer.brushSize}px</span>
-            </div>
-            <input 
-                type="range" 
-                min="5" max="50" step="1" 
-                value={layer.brushSize}
-                onChange={(e) => onChange({ ...layer, brushSize: parseInt(e.target.value) })}
-                className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-            />
-         </div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
+              <Circle className="w-3 h-3" />
+              Brush Size
+            </span>
+            <span className="text-xs font-mono text-slate-400">
+              {layer.brushSize}px
+            </span>
+          </div>
+          <input
+            type="range"
+            min="5"
+            max="50"
+            step="1"
+            value={layer.brushSize}
+            onChange={(e) =>
+              onChange({
+                ...layer,
+                brushSize: parseInt(e.target.value, 10),
+              })
+            }
+            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+          />
+        </div>
       </div>
 
-      {/* Segments List */}
+      {/* Segments List + Add label */}
       <div className="flex-1 overflow-y-auto">
-         <div className="px-4 py-2 text-xs font-bold text-slate-500 uppercase bg-slate-950 sticky top-0 border-b border-slate-800 flex justify-between items-center">
+        <div className="px-4 py-2 text-xs font-bold text-slate-500 uppercase bg-slate-950 sticky top-0 border-b border-slate-800 flex flex-col gap-2">
+          <div className="flex justify-between items-center">
             <span>Segments Palette</span>
-            <span className="text-[10px] text-slate-600 font-normal">{layer.segments.length} items</span>
-         </div>
-         
-         <div className="divide-y divide-slate-800/50">
-            {layer.segments.map((seg) => {
-                const isActive = layer.activeSegmentId === seg.id;
-                return (
-                    <div 
-                        key={seg.id} 
-                        onClick={() => setActiveSegment(seg.id)}
-                        className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors border-l-4 ${
-                            isActive 
-                            ? 'bg-emerald-900/20 border-emerald-500' 
-                            : 'border-transparent hover:bg-slate-900'
-                        }`}
-                    >
-                        <div 
-                            onClick={(e) => toggleSegment(e, seg.id)}
-                            className="cursor-pointer p-1 -ml-1 rounded hover:bg-slate-800"
-                            title={seg.isVisible ? "Hide Segment" : "Show Segment"}
-                        >
-                            {seg.isVisible 
-                                ? <Eye className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-400' : 'text-slate-400'}`} /> 
-                                : <EyeOff className="w-3.5 h-3.5 text-slate-600" />
-                            }
-                        </div>
-                        
-                        <div className="w-3 h-3 rounded-full shadow-sm ring-1 ring-white/10" style={{ backgroundColor: `rgb(${seg.color.join(',')})` }} />
-                        
-                        <div className={`flex-1 min-w-0 text-sm font-medium truncate ${isActive ? 'text-white' : 'text-slate-400'}`}>
-                            {seg.label}
-                        </div>
+            <span className="text-[10px] text-slate-600 font-normal">
+              {layer.segments.length} items
+            </span>
+          </div>
 
-                        {isActive && <Brush className="w-3 h-3 text-emerald-500 animate-pulse" />}
-                    </div>
-                );
-            })}
-         </div>
+          {/* New label row */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newLabelName}
+              onChange={(e) => setNewLabelName(e.target.value)}
+              placeholder="New label…"
+              className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-emerald-500"
+            />
+            <input
+              type="color"
+              value={newLabelColor}
+              onChange={(e) => setNewLabelColor(e.target.value)}
+              className="w-8 h-7 rounded border border-slate-700 cursor-pointer bg-transparent"
+              title="Label color"
+            />
+            <button
+              onClick={handleAddSegment}
+              className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold flex items-center gap-1"
+            >
+              <Plus className="w-3 h-3" />
+              Add
+            </button>
+          </div>
+        </div>
+
+        <div className="divide-y divide-slate-800/50">
+          {layer.segments.map((seg) => {
+            const isActive = layer.activeSegmentId === seg.id;
+            return (
+              <div
+                key={seg.id}
+                onClick={() => setActiveSegment(seg.id)}
+                className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors border-l-4 ${
+                  isActive
+                    ? 'bg-emerald-900/20 border-emerald-500'
+                    : 'border-transparent hover:bg-slate-900'
+                }`}
+              >
+                <div
+                  onClick={(e) => toggleSegment(e, seg.id)}
+                  className="cursor-pointer p-1 -ml-1 rounded hover:bg-slate-800"
+                  title={seg.isVisible ? 'Hide Segment' : 'Show Segment'}
+                >
+                  {seg.isVisible ? (
+                    <Eye
+                      className={`w-3.5 h-3.5 ${
+                        isActive ? 'text-emerald-400' : 'text-slate-400'
+                      }`}
+                    />
+                  ) : (
+                    <EyeOff className="w-3.5 h-3.5 text-slate-600" />
+                  )}
+                </div>
+
+                <div
+                  className="w-3 h-3 rounded-full shadow-sm ring-1 ring-white/10"
+                  style={{
+                    backgroundColor: `rgb(${seg.color.join(',')})`,
+                  }}
+                />
+
+                <div
+                  className={`flex-1 min-w-0 text-sm font-medium truncate ${
+                    isActive ? 'text-white' : 'text-slate-400'
+                  }`}
+                >
+                  {seg.label}
+                </div>
+
+                {isActive && (
+                  <Brush className="w-3 h-3 text-emerald-500 animate-pulse" />
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
-      
+
       {/* Footer Info */}
       <div className="p-3 bg-slate-900 border-t border-slate-800 text-[10px] text-slate-500 text-center">
-         Select a label to paint on slices
+        Select a label, then use Brush to paint or Eraser to remove
       </div>
     </div>
   );

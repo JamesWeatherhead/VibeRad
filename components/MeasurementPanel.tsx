@@ -1,8 +1,6 @@
-
-import React, { useState } from 'react';
+import React from 'react';
 import { Measurement } from '../types';
-import { Trash2, Edit2, Download, FileText, Ruler, ArrowRight, Target, Sparkles, X, Copy, Check } from 'lucide-react';
-import AiReportModal from './AiReportModal';
+import { Trash2, Edit2, Ruler, ArrowRight, Target } from 'lucide-react';
 
 interface MeasurementPanelProps {
   measurements: Measurement[];
@@ -32,22 +30,6 @@ const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
   pixelSpacing = 0.5, // Default approx if not provided
   studyMetadata
 }) => {
-  const [showReportModal, setShowReportModal] = useState(false);
-
-  const exportData = () => {
-    const data = measurements.map(m => ({
-      label: m.label || 'Measurement',
-      value_mm: (m.value * pixelSpacing).toFixed(2),
-      slice: m.sliceIndex + 1
-    }));
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'measurements.json';
-    a.click();
-  };
-
   return (
     <div className="w-80 bg-slate-950 border-l border-slate-800 flex flex-col h-full relative">
       {/* Header */}
@@ -130,36 +112,6 @@ const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
           })
         )}
       </div>
-
-      {/* Actions */}
-      <div className="p-4 bg-slate-900 border-t border-slate-800 grid grid-cols-2 gap-2">
-        <button 
-          onClick={exportData}
-          disabled={measurements.length === 0}
-          className="flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-medium border border-slate-700 disabled:opacity-50"
-        >
-          <Download className="w-3.5 h-3.5" />
-          Export JSON
-        </button>
-        <button 
-          onClick={() => setShowReportModal(true)}
-          className="flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium disabled:opacity-50 transition-colors"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          AI Report
-        </button>
-      </div>
-
-      {/* AI REPORT MODAL */}
-      {showReportModal && studyMetadata && (
-        <AiReportModal 
-            isOpen={showReportModal}
-            onClose={() => setShowReportModal(false)}
-            studyMetadata={studyMetadata}
-            measurements={measurements}
-            pixelSpacing={pixelSpacing}
-        />
-      )}
     </div>
   );
 };
