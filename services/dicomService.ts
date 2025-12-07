@@ -106,10 +106,23 @@ export const fetchDicomImageBlob = async (config: DicomWebConfig, url: string): 
 
   // STRATEGY 3: Frame 1 Specific Render (Common fix for 400 Bad Request on Instance Level)
   // Convert .../instances/{uid}/rendered -> .../instances/{uid}/frames/1/rendered
-  // We use a regex check to handle Proxy URLs correctly (which might not end with /rendered)
-  if (url.match(/\/instances\/[^\/]+\/rendered/)) {
-      const frameUrl = url.replace(/\/rendered/, '/frames/1/rendered');
+  // Must handle both standard URLs AND Encoded Proxy URLs
+  const isStandardRendered = url.match(/\/instances\/[^\/]+\/rendered$/);
+  const isProxyRendered = url.includes('%2Frendered'); // Encoded slash
+
+  if (isStandardRendered || isProxyRendered) {
+      let frameUrl = url;
       
+      if (isProxyRendered) {
+          // Robust replacement for encoded URLs (corsproxy)
+          // Replaces encoded "/rendered" at end of the string with encoded "/frames/1/rendered"
+          // We use regex to be safe about the position
+          frameUrl = url.replace(/%2Frendered$/, '%2Fframes%2F1%2Frendered');
+          // If query params exist after (rare in our usage), simple replace might fail if not strict, but we assume end for now
+      } else {
+          frameUrl = url.replace(/\/rendered$/, '/frames/1/rendered');
+      }
+
       // 3a. Frame 1 with Header
       blob = await tryFetch(frameUrl, { 'Accept': 'image/jpeg' }, "Strategy C (Frame 1 Header)");
       if (blob) return blob;
@@ -303,6 +316,7 @@ export const runConnectionDiagnostics = async (
             // C: Frame Fallback
             if (!success) {
               try {
+                 // Try simple replace first
                  const frameUrl = renderUrl.replace(/\/rendered/, '/frames/1/rendered');
                  const res = await fetchWithTimeout(frameUrl, { mode: 'cors', headers: { 'Accept': 'image/jpeg' } }, 5000);
                  const blob = await res.blob();

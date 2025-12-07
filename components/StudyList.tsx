@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { Study, ConnectionType, DicomWebConfig, DiagnosticStep } from '../types';
 import { searchDicomWebStudies, runConnectionDiagnostics } from '../services/dicomService';
 import { testReportPayloadIntegrity, testSuggestionEngine } from '../services/aiService';
 import { 
   Search, Globe, CheckCircle2, XCircle, 
-  Loader2, Play, Calendar, FileText, Layers, User, AlertTriangle
+  Loader2, Play, Calendar, FileText, Layers, User, AlertTriangle, Shield
 } from 'lucide-react';
 
 interface StudyListProps {
@@ -14,13 +13,19 @@ interface StudyListProps {
   setConnectionType: (type: ConnectionType) => void;
   dicomConfig: DicomWebConfig;
   setDicomConfig: (config: DicomWebConfig) => void;
+  onShowSafety?: () => void;
 }
 
 const PUBLIC_SERVERS = [
   {
+    name: 'Public Demo Server',
+    url: 'https://d3t6nz73tl5kd8.cloudfront.net/dicomweb',
+    useProxy: false
+  },
+  {
     name: 'Orthanc Demo (Europe)',
     url: 'https://demo.orthanc-server.com/dicom-web',
-    useProxy: true // Default to proxy for better success rate in browser
+    useProxy: true
   }
 ];
 
@@ -29,7 +34,8 @@ const StudyList: React.FC<StudyListProps> = ({
   connectionType,
   setConnectionType,
   dicomConfig,
-  setDicomConfig
+  setDicomConfig,
+  onShowSafety
 }) => {
   const [studies, setStudies] = useState<Study[]>([]);
   const [loading, setLoading] = useState(false);
@@ -162,7 +168,7 @@ const StudyList: React.FC<StudyListProps> = ({
                     <button
                       key={srv.name}
                       onClick={() => {
-                        setDicomConfig({ ...dicomConfig, url: srv.url, useCorsProxy: srv.useProxy });
+                        setDicomConfig({ ...dicomConfig, url: srv.url, useCorsProxy: srv.useProxy, name: srv.name });
                         setDiagnosticSteps([]);
                       }}
                       className={`text-left text-xs p-2 rounded border transition-colors flex items-center justify-between ${
@@ -268,9 +274,13 @@ const StudyList: React.FC<StudyListProps> = ({
         </div>
         
         <div className="flex items-center gap-2">
-           <div className="hidden lg:flex items-center px-4 py-1.5 bg-indigo-950/30 border border-indigo-900/50 rounded-full">
-             <span className="text-xs text-indigo-300 font-medium">Educational Demo Only • Not for Clinical Diagnosis</span>
-           </div>
+           <button 
+             onClick={onShowSafety}
+             className="hidden lg:flex items-center gap-2 px-4 py-1.5 bg-indigo-950/30 border border-indigo-900/50 rounded-full hover:bg-indigo-900/50 transition-colors"
+           >
+             <Shield className="w-3 h-3 text-indigo-400" />
+             <span className="text-xs text-indigo-300 font-medium">Educational Demo Only • Not for Clinical Use</span>
+           </button>
            <button onClick={loadStudies} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white" title="Refresh">
              <Loader2 className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
            </button>

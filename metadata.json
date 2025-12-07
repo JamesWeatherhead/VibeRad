@@ -1,5 +1,5 @@
 {
-  "name": "NeuroView PACS",
-  "description": "A web-based DICOM series viewer prototype allowing connection to medical image databases, series scrolling, window/level adjustment, and measurements.",
+  "name": "VibeRad",
+  "description": "VibeRad is an AI Studio DICOM app supercharged by Gemini 3 Pro's advanced reasoning & native multimodality so anyone can explore radiology.",
   "requestFramePermissions": []
 }

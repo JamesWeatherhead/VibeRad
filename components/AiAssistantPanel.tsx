@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, MessageSquarePlus, RefreshCw } from 'lucide-react';
 import { streamChatResponse, generateFollowUpQuestions } from '../services/aiService';
@@ -19,7 +18,7 @@ interface AiAssistantPanelProps {
 
 const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, studyMetadata, cursor, onJumpToSlice }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: 'welcome', role: 'model', text: 'Hello. I am your Radiology Assistant. You can ask me medical questions, request Search data, or enable Deep Thinking for complex cases.' }
+    { id: 'welcome', role: 'model', text: 'This is an anonymized demo study from a public server. I can teach anatomy, summarize guidelines, and help generate educational reports — not real diagnoses.' }
   ]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
