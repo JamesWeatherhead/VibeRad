@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, MessageSquarePlus, RefreshCw } from 'lucide-react';
 import { streamChatResponse, generateFollowUpQuestions } from '../services/aiService';
@@ -24,9 +25,9 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
   const [isThinking, setIsThinking] = useState(false);
   const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
   const [currentSuggestions, setCurrentSuggestions] = useState<string[]>([
-    "Differential diagnosis for this appearance?",
-    "Key findings in this region?",
-    "Recommendations for follow-up?"
+    "What anatomical structures are here?",
+    "How would a report describe this?",
+    "Common teaching points for this region?"
   ]);
   const [mode, setMode] = useState<'standard' | 'thinking' | 'search'>('standard');
   const chatContainerRef = useRef<HTMLDivElement>(null);

@@ -290,13 +290,24 @@ export const generateFollowUpQuestions = async (lastUserMessage: string, lastBot
       User asked: "${lastUserMessage.substring(0, 500)}"
       AI answered: "${lastBotResponse.substring(0, 1000)}"
 
-      Provide 3 short, clinical, relevant follow-up questions the user might want to ask next.
-      Focus on differential diagnosis, anatomy clarification, or next steps in imaging.
-      
+      Provide 3 short, EDUCATIONAL follow-up questions the user might want to ask next.
+
+      SUGGESTED FOLLOW-UPS POLICY (STRICT):
+      - These follow-ups are for EDUCATIONAL USE ONLY.
+      - Focus on Anatomy, Image Interpretation Skills, or General Teaching.
+      - DO NOT ask for diagnosis, differential diagnosis, management, or prognosis.
+      - DO NOT suggest questions that imply diagnosing this specific case.
+
+      ALLOWED Question Styles:
+      - Anatomy: "What structures are adjacent?"
+      - Description: "How would a report describe this?"
+      - Orientation: "How does this look on MRI vs CT?"
+      - General: "Common teaching points for this region?"
+
       Format rules:
       - Return ONLY the questions, one per line.
       - No numbering or bullets.
-      - Maximum 8 words per question.
+      - Maximum 10 words per question.
     `;
 
     const response = await ai.models.generateContent({

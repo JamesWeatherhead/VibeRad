@@ -18,11 +18,6 @@ interface StudyListProps {
 
 const PUBLIC_SERVERS = [
   {
-    name: 'Public Demo Server',
-    url: 'https://d3t6nz73tl5kd8.cloudfront.net/dicomweb',
-    useProxy: false
-  },
-  {
     name: 'Orthanc Demo (Europe)',
     url: 'https://demo.orthanc-server.com/dicom-web',
     useProxy: true

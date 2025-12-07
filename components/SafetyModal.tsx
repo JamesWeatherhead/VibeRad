@@ -28,6 +28,10 @@ const SafetyModal: React.FC<SafetyModalProps> = ({ onClose }) => {
                 <span className="font-mono text-slate-500 font-bold">03</span>
                 <p><strong>AI Limitations:</strong> Generative AI can hallucinate. Never rely on the AI assistant for diagnosis, triage, or treatment.</p>
              </div>
+             <div className="flex gap-3">
+                <span className="font-mono text-slate-500 font-bold">04</span>
+                <p><strong>Data Source:</strong> DICOM demo images are streamed from the public Orthanc demo server (demo.orthanc-server.com). No real patient PHI is used.</p>
+             </div>
           </div>
           <button 
             onClick={onClose}
