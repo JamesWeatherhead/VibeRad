@@ -2,7 +2,7 @@
 
 **VibeRad** is an AI-powered DICOM viewer and radiology teaching assistant designed to "reimagine learning" and "accelerate discovery." Built for the **Google DeepMind - Vibe Code with Gemini 3 Pro** Kaggle hackathon, this application bridges the gap between complex medical imaging and accessible education using the latest advancements in reasoning and native multimodality from Gemini 3 Pro.
 
-All code was written by Gemini 3 Pro for the 2025 Kaggle Google DeepMind - Vibe Code with Gemini 3 Pro in AI Studio competition.
+The core codebase was generated with Gemini 3 Pro in AI Studio, with human review and iteration, for the 2025 Kaggle Google DeepMind - Vibe Code with Gemini 3 Pro in AI Studio competition.
 
 ![VibeRad viewer and AI Assistant](./viberad-screenshot.png)
 
