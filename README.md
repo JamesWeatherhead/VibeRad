@@ -1,8 +1,8 @@
 # VibeRad: Radiology Education Reimagined with Gemini 3 Pro
 
-**VibeRad** is an AI-powered DICOM viewer and radiology teaching assistant designed to "reimagine learning" and "accelerate discovery." Built for the **Google DeepMind - Vibe Code with Gemini 3 Pro** Kaggle hackathon, this application bridges the gap between complex medical imaging and accessible education using the latest advancements in reasoning and native multimodality from Gemini 3 Pro.
+**VibeRad** is an AI-powered DICOM viewer and radiology teaching assistant designed to *reimagine learning* and *accelerate discovery*. Built for the **Google DeepMind - Vibe Code with Gemini 3 Pro** Kaggle hackathon, this application bridges the gap between complex medical imaging and accessible education using the latest advancements in reasoning and native multimodality from Gemini 3 Pro.
 
-The core codebase was generated with Gemini 3 Pro in AI Studio, with human review and iteration, for the 2025 Kaggle Google DeepMind - Vibe Code with Gemini 3 Pro in AI Studio competition.
+The core codebase was generated with Gemini 3 Pro in AI Studio, with human review and iteration, for the 2025 Google DeepMind – Vibe Code with Gemini 3 Pro in AI Studio Kaggle competition.
 
 ![VibeRad viewer and AI Assistant](./viberad-screenshot.png)
 
@@ -23,17 +23,17 @@ VibeRad leverages the `thinkingConfig` of **Gemini 3 Pro Preview** to provide "D
 - **Audio:** Integrated dictation uses Gemini to transcribe voice notes directly into the report engine, bypassing traditional speech-to-text libraries.
 
 ### Grounded in Reality
-Using the **Google Search Tool**, VibeRad can cross-reference imaging findings with up-to-date medical guidelines and literature, reducing hallucinations and providing students with citation-style sources.
+Using the **Google Search Tool**, VibeRad can cross-reference imaging findings with up-to-date medical guidelines and literature, reducing hallucinations and giving students citation-style links for further reading.
 
 ### Full-Featured DICOM Viewer
 Unlike static chat interfaces, VibeRad is a fully functional DICOMweb viewer built from scratch in React:
 - **Tools:** Window/Level (Contrast), Pan, Zoom, Scroll, Measure.
 - **Segmentation:** Paint brush tools for anatomical highlighting.
-- **Diagnostics:** Auto-detects and configures connections to public DICOM servers (Orthanc/AWS).
+- **Connectivity:** Connects read-only to public DICOMweb endpoints (for example, the Orthanc demo server).
 
 ## Tech Stack & Implementation
 
-- **Framework:** React 19 + Tailwind CSS
+- **Framework:** React 19.2.1 + TypeScript + Tailwind CSS
 - **AI SDK:** `@google/genai`
 - **Models:**
   - `gemini-3-pro-preview` (Report Generation, Deep Reasoning)
@@ -47,8 +47,8 @@ Unlike static chat interfaces, VibeRad is a fully functional DICOMweb viewer bui
 
 ## Usage
 
-1. **API Key:** The app requires a valid Google Cloud API Key with access to the Gemini API. This is handled via the `process.env.API_KEY` injection in AI Studio.
-2. **Data Source:** The app automatically connects to public demo servers (e.g., Orthanc Demo or AWS Public Datasets). No local DICOM server is required.
+1. **API Key:** The app requires a valid Google Cloud API Key with access to the Gemini API. In AI Studio, this is handled via the `process.env.API_KEY` injection.
+2. **Data Source:** By default, the app connects read-only to anonymized public DICOM studies (for example, the Orthanc demo server at `demo.orthanc-server.com`). No real patient PHI is used or required.
 3. **Safety:** Upon launch, users must acknowledge the safety disclaimer.
 
 ## Hackathon Tracks
@@ -68,7 +68,7 @@ This contains everything you need to run your app locally.
 View the app in AI Studio: https://ai.studio/apps/drive/1pCMrggBue_gNE9IhzjN-KEdLm8cVPGjW
 
 ### Run Locally
-Prerequisites: Node.js
+Prerequisites: a recent version of Node.js.
 
 1. Install dependencies: `npm install`
 2. Set the `API_KEY` in `.env.local` to your Gemini API key
