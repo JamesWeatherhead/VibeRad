@@ -7,7 +7,7 @@ The core codebase was generated with Gemini 3 Pro in AI Studio, with human revie
 ![VibeRad viewer and AI Assistant](./viberad-screenshot.png)
 
 ## The Vibe
-Radiology is notoriously difficult to learn. VibeRad acts as an intelligent copilot, sitting beside the student, capable of seeing what they see, reasoning through complex anatomy, and grounding findings in real-world medical guidelines.
+Radiology is notoriously difficult to learn. VibeRad acts as an intelligent teaching assistant beside the student, capable of seeing what they see, reasoning through complex anatomy, and grounding findings in real-world medical guidelines.
 
 > **Note:** This application is for **EDUCATIONAL USE ONLY**. It uses anonymized demo data and is not a medical device.
 
@@ -20,7 +20,6 @@ VibeRad leverages the `thinkingConfig` of **Gemini 3 Pro Preview** to provide "D
 
 ### Native Multimodality
 - **Vision:** The AI "sees" the current DICOM slice and viewport state to answer context-aware questions (e.g., "What region is highlighted?").
-- **Audio:** Integrated dictation uses Gemini to transcribe voice notes directly into the report engine, bypassing traditional speech-to-text libraries.
 
 ### Grounded in Reality
 Using the **Google Search Tool**, VibeRad can cross-reference imaging findings with up-to-date medical guidelines and literature, reducing hallucinations and giving students citation-style links for further reading.
@@ -36,14 +35,14 @@ Unlike static chat interfaces, VibeRad is a fully functional DICOMweb viewer bui
 - **Framework:** React 19.2.1 + TypeScript + Tailwind CSS
 - **AI SDK:** `@google/genai`
 - **Models:**
-  - `gemini-3-pro-preview` (Report Generation, Deep Reasoning)
-  - `gemini-2.5-flash` (Chat, Search, Transcription)
+  - `gemini-3-pro-preview` (Deep Reasoning)
+  - `gemini-2.5-flash` (Chat, Search)
 - **Protocol:** DICOMweb (QIDO-RS, WADO-RS)
 
 ### Code Highlights
 - **`aiService.ts`**: Centralized logic for streaming chat, handling `thinkingBudget`, and managing tool calls (like navigating the viewer via AI).
 - **`ViewerCanvas.tsx`**: High-performance Canvas API rendering for DICOM frames and segmentation layers.
-- **`AiReportModal.tsx`**: A dedicated workflow that aggregates measurements, metadata, and audio dictation to generate structured Markdown reports.
+- **`AiAssistantPanel.tsx`**: A dedicated workflow that aggregates measurements and metadata to help learners describe what they see and capture teaching notes. The assistant does not generate clinical reports or treatment recommendations.
 
 ## Usage
 

@@ -1,8 +1,7 @@
-
 import React, { useState } from 'react';
 import { 
   Activity, Shield, ArrowRight, Bot, 
-  MousePointer2, Globe, FileText
+  MousePointer2, Globe
 } from 'lucide-react';
 
 interface IntroScreenProps {
@@ -109,13 +108,6 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStartDemo }) => {
                     <div>
                         <span className="block text-sm font-bold text-slate-200">Search and guideline support</span>
                         <span className="text-xs text-slate-500">Cross-reference findings with web guidelines.</span>
-                    </div>
-                </li>
-                <li className="flex items-start gap-3">
-                    <div className="mt-0.5 text-purple-400"><FileText className="w-4 h-4" /></div>
-                    <div>
-                        <span className="block text-sm font-bold text-slate-200">Auto educational reports</span>
-                        <span className="text-xs text-slate-500">Dictate observations into structured summaries.</span>
                     </div>
                 </li>
             </ul>
