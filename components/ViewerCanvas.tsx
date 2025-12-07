@@ -55,6 +55,9 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [lastDrawPoint, setLastDrawPoint] = useState<Point | null>(null);
   const [draftMeasurement, setDraftMeasurement] = useState<Measurement | null>(null);
+  
+  // Track which mouse button is held for temporary overrides (0=Left, 1=Middle, 2=Right)
+  const [activeMouseButton, setActiveMouseButton] = useState<number | null>(null);
 
   // Expose Screenshot Capability
   useImperativeHandle(ref, () => ({
@@ -264,30 +267,34 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
+    e.preventDefault(); // Stop text selection
     setIsDragging(true);
     setDragStart({ x: e.clientX, y: e.clientY });
-    
+    setActiveMouseButton(e.button);
+
+    // If middle click, we treat it as Pan regardless of tool
+    if (e.button === 1) return;
+
     const p = getCanvasPoint(e);
 
-    if (activeTool === ToolMode.MEASURE) {
-      setDraftMeasurement({
-        id: 'draft',
-        start: p, end: p, value: 0,
-        sliceIndex: sliceIndex,
-        createdAt: Date.now()
-      });
-    }
-    
-    // Support BRUSH or ERASER
-    const isPaintTool = activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER;
-    if (isPaintTool && segmentationLayer.isVisible && currentImageBitmap) {
-       // Only block BRUSH if no segment selected, ERASER works always
-       if (activeTool === ToolMode.BRUSH && !segmentationLayer.activeSegmentId) return;
-
-       setLastDrawPoint(p);
-       // Initial dot
-       paintOnMask(p, p);
+    // Handle Left Click Tools
+    if (e.button === 0) {
+        if (activeTool === ToolMode.MEASURE) {
+            setDraftMeasurement({
+                id: 'draft',
+                start: p, end: p, value: 0,
+                sliceIndex: sliceIndex,
+                createdAt: Date.now()
+            });
+        }
+        
+        // Support BRUSH or ERASER
+        const isPaintTool = activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER;
+        if (isPaintTool && segmentationLayer.isVisible && currentImageBitmap) {
+            if (activeTool === ToolMode.BRUSH && !segmentationLayer.activeSegmentId) return;
+            setLastDrawPoint(p);
+            paintOnMask(p, p);
+        }
     }
   };
 
@@ -302,15 +309,12 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
      ctx.save();
      
-     // Set styles based on tool
      if (activeTool === ToolMode.ERASER) {
          ctx.globalCompositeOperation = 'destination-out';
-         // Color doesn't matter for destination-out, only alpha (must be opaque to erase fully)
          ctx.strokeStyle = 'rgba(0,0,0,1)';
          ctx.fillStyle = 'rgba(0,0,0,1)';
      } else {
          ctx.globalCompositeOperation = 'source-over';
-         // Find color
          const seg = segmentationLayer.segments.find(s => s.id === segmentationLayer.activeSegmentId);
          const color = seg ? `rgb(${seg.color.join(',')})` : 'red';
          ctx.strokeStyle = color;
@@ -319,7 +323,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
      ctx.lineCap = 'round';
      ctx.lineJoin = 'round';
-     // Use dynamic brush size
      ctx.lineWidth = segmentationLayer.brushSize; 
      
      ctx.beginPath();
@@ -328,16 +331,23 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      ctx.stroke();
      
      ctx.restore();
-     
-     // Trigger re-render of the main canvas to show changes
      setRenderTick(t => t + 1);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging) return;
     
-    // BRUSH/ERASER logic handles its own coordinates and rendering triggers
-    if ((activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER) && lastDrawPoint) {
+    // Always Pan if Middle Mouse Button (1) is held
+    if (activeMouseButton === 1) {
+        const dx = e.clientX - (dragStart?.x || e.clientX);
+        const dy = e.clientY - (dragStart?.y || e.clientY);
+        setViewport(p => ({ ...p, pan: { x: p.pan.x + dx, y: p.pan.y + dy }}));
+        setDragStart({ x: e.clientX, y: e.clientY });
+        return;
+    }
+
+    // Paint Tools
+    if (activeMouseButton === 0 && (activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER) && lastDrawPoint) {
        const p = getCanvasPoint(e);
        paintOnMask(lastDrawPoint, p);
        setLastDrawPoint(p);
@@ -348,21 +358,24 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
     const dx = e.clientX - dragStart.x;
     const dy = e.clientY - dragStart.y;
 
-    if (activeTool === ToolMode.PAN) {
+    if (activeTool === ToolMode.PAN && activeMouseButton === 0) {
       setViewport(p => ({ ...p, pan: { x: p.pan.x + dx, y: p.pan.y + dy }}));
       setDragStart({ x: e.clientX, y: e.clientY });
-    } else if (activeTool === ToolMode.ZOOM) {
-      setViewport(p => ({ ...p, scale: Math.max(0.1, p.scale + (dy * -0.01)) }));
+    } else if (activeTool === ToolMode.ZOOM && activeMouseButton === 0) {
+      // Smoother multiplicative zoom
+      // Drag Down (dy > 0) -> Zoom Out (< 1)
+      // Drag Up (dy < 0) -> Zoom In (> 1)
+      const zoomFactor = 1 + (dy * -0.005);
+      setViewport(p => ({ ...p, scale: Math.max(0.1, p.scale * zoomFactor) }));
       setDragStart({ x: e.clientX, y: e.clientY });
-    } else if (activeTool === ToolMode.WINDOW_LEVEL) {
+    } else if (activeTool === ToolMode.WINDOW_LEVEL && activeMouseButton === 0) {
       setViewport(p => ({ 
         ...p, 
         windowWidth: p.windowWidth + dx * 2, 
         windowCenter: p.windowCenter - dy * 2 
       }));
       setDragStart({ x: e.clientX, y: e.clientY });
-    } else if (activeTool === ToolMode.SCROLL) {
-       // Drag Scroll
+    } else if (activeTool === ToolMode.SCROLL && activeMouseButton === 0) {
       if (Math.abs(dy) > 10) {
         const dir = dy > 0 ? 1 : -1;
         const max = series.instances.length || series.instanceCount;
@@ -372,7 +385,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
             setDragStart({ x: e.clientX, y: e.clientY });
         }
       }
-    } else if (activeTool === ToolMode.MEASURE && draftMeasurement) {
+    } else if (activeTool === ToolMode.MEASURE && draftMeasurement && activeMouseButton === 0) {
       const p = getCanvasPoint(e);
       const dist = Math.sqrt(Math.pow(p.x - draftMeasurement.start.x, 2) + Math.pow(p.y - draftMeasurement.start.y, 2));
       setDraftMeasurement({ ...draftMeasurement, end: p, value: dist });
@@ -383,9 +396,9 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
     setIsDragging(false);
     setDragStart(null);
     setLastDrawPoint(null);
+    setActiveMouseButton(null);
 
     if (activeTool === ToolMode.MEASURE && draftMeasurement) {
-      // Commit measurement if significant
       if (draftMeasurement.value > 5) {
          onMeasurementAdd({
              ...draftMeasurement,
@@ -398,8 +411,21 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   };
   
   const handleWheel = (e: React.WheelEvent) => {
-     // Allow wheel scroll unless we decide to map it to zoom later
-     if (activeTool === ToolMode.SCROLL || activeTool !== ToolMode.ZOOM) {
+     // UX IMPROVEMENT:
+     // - Ctrl/Cmd + Wheel -> Zoom
+     // - Tool == ZOOM -> Zoom
+     // - Otherwise -> Scroll Slices
+     const isZoomAction = e.ctrlKey || e.metaKey || activeTool === ToolMode.ZOOM;
+
+     if (isZoomAction) {
+         // Standard wheel zoom: Pull (positive) = Zoom Out, Push (negative) = Zoom In
+         const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+         setViewport(p => ({ 
+             ...p, 
+             scale: Math.max(0.1, Math.min(20, p.scale * zoomFactor)) 
+         }));
+     } else {
+        // Scroll Slices
         const dir = e.deltaY > 0 ? 1 : -1;
         const max = series?.instances.length || series?.instanceCount || 0;
         const next = Math.max(0, Math.min(max - 1, sliceIndex + dir));
@@ -417,14 +443,21 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
     return <div className="flex-1 bg-black flex items-center justify-center text-gray-500">Select a series</div>;
   }
 
-  // Calculate visual scrollbar height
   const scrollPct = series.instanceCount > 0 ? (sliceIndex / series.instanceCount) * 100 : 0;
   
-  const isPaintOrErase = activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER;
-  const cursorStyle = activeTool === ToolMode.PAN ? 'move' : isPaintOrErase ? 'crosshair' : 'default';
+  // Dynamic cursor
+  let cursorStyle = 'default';
+  if (activeTool === ToolMode.PAN || activeMouseButton === 1) cursorStyle = 'move';
+  else if (activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER) cursorStyle = 'crosshair';
+  else if (activeTool === ToolMode.ZOOM) cursorStyle = 'zoom-in';
 
   return (
-    <div className="flex-1 bg-black relative overflow-hidden select-none" ref={containerRef} onWheel={handleWheel}>
+    <div 
+        className="flex-1 bg-black relative overflow-hidden select-none" 
+        ref={containerRef} 
+        onWheel={handleWheel}
+        onContextMenu={(e) => e.preventDefault()} // Disable context menu for right/middle click actions
+    >
       <canvas
         ref={canvasRef}
         width={containerRef.current?.clientWidth || 800}
