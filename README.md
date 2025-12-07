@@ -65,7 +65,7 @@ Unlike static chat interfaces, VibeRad is a fully functional DICOMweb viewer bui
 
 This contains everything you need to run your app locally.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1pCMrggBue_gNE9IhzjN-KEdLm8cVPGjW
+View the app in AI Studio: https://ai.studio/apps/drive/1pCMrggBue_gNE9IhzjN-KEdLm8cVPGjW
 
 ### Run Locally
 Prerequisites: Node.js
