@@ -243,7 +243,7 @@ const App: React.FC = () => {
               </div>
 
               {/* Center Tools */}
-              <div className="flex items-center space-x-1">
+              <div className="flex items-center justify-center gap-3">
                 {TOOLS.map((tool) => {
                   const Icon = tool.icon;
                   const isActive = activeTool === tool.id;
@@ -251,15 +251,15 @@ const App: React.FC = () => {
                     <button
                       key={tool.id}
                       onClick={() => setActiveTool(tool.id)}
-                      className={`p-2 rounded-md flex flex-col items-center justify-center w-16 transition-all ${
+                      className={`p-2 rounded-md flex flex-col items-center justify-center w-24 transition-all ${
                         isActive 
-                          ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50 transform scale-105' 
+                          ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50 transform scale-105 z-10' 
                           : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                       }`}
                       title={tool.label}
                     >
-                      <Icon className="w-5 h-5 mb-0.5" />
-                      <span className="text-[9px] uppercase font-medium tracking-wider">{tool.label}</span>
+                      <Icon className="w-5 h-5 mb-1" />
+                      <span className="text-[9px] uppercase font-bold tracking-wider whitespace-nowrap">{tool.label}</span>
                     </button>
                   );
                 })}

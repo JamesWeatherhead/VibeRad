@@ -12,7 +12,7 @@ import {
 export const TOOLS = [
   { id: ToolMode.POINTER, label: 'Select', icon: MousePointer2 },
   { id: ToolMode.SCROLL, label: 'Scroll', icon: Layers },
-  { id: ToolMode.WINDOW_LEVEL, label: 'Window/Level', icon: Sun },
+  { id: ToolMode.WINDOW_LEVEL, label: 'Contrast', icon: Sun },
   { id: ToolMode.PAN, label: 'Pan', icon: Move },
   { id: ToolMode.ZOOM, label: 'Zoom', icon: Search },
   { id: ToolMode.MEASURE, label: 'Measure', icon: Ruler },
