@@ -4,6 +4,8 @@
 
 All code was written by Gemini 3 Pro for the 2025 Kaggle Google DeepMind - Vibe Code with Gemini 3 Pro in AI Studio competition.
 
+![VibeRad viewer and AI Assistant](./viberad-screenshot.png)
+
 ## The Vibe
 Radiology is notoriously difficult to learn. VibeRad acts as an intelligent copilot, sitting beside the student, capable of seeing what they see, reasoning through complex anatomy, and grounding findings in real-world medical guidelines.
 
