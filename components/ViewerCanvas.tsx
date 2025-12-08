@@ -51,6 +51,9 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentImageBitmap, setCurrentImageBitmap] = useState<HTMLImageElement | null>(null);
   
+  // Responsive Canvas State
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
+
   // Interaction State (Refs for synchronous updates during high-frequency events)
   const interactionRef = useRef({
     isDragging: false,
@@ -256,6 +259,28 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
   // --- EFFECTS ---
 
+  // 0. Resize Observer (Fix for blank canvas on resize)
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        // Use contentRect to get dimensions without padding/border
+        const { width, height } = entry.contentRect;
+        setCanvasSize({ 
+           width: Math.floor(width), 
+           height: Math.floor(height) 
+        });
+      }
+    });
+
+    resizeObserver.observe(containerRef.current);
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   // 1. Reset Viewport on Series Change
   useEffect(() => {
     if (series) {
@@ -330,10 +355,10 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
     };
   }, [series, sliceIndex, connectionType, dicomConfig]);
 
-  // 4. Render Loop (Triggered by state changes)
+  // 4. Render Loop (Triggered by state changes, including resize)
   useEffect(() => {
     renderScene();
-  }, [viewport, currentImageBitmap, measurements, activeMeasurementId, draftMeasurement, sliceIndex, segmentationLayer, renderTick]);
+  }, [viewport, currentImageBitmap, measurements, activeMeasurementId, draftMeasurement, sliceIndex, segmentationLayer, renderTick, canvasSize]);
 
 
   // --- INTERACTION HANDLERS ---
@@ -581,8 +606,8 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
     >
       <canvas
         ref={canvasRef}
-        width={containerRef.current?.clientWidth || 800}
-        height={containerRef.current?.clientHeight || 600}
+        width={canvasSize.width}
+        height={canvasSize.height}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -591,7 +616,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
           cursor: cursorStyle,
           filter: getFilterStyle()
         }}
-        className="block w-full h-full"
+        className="block"
       />
       
       {/* Scrollbar Indicator */}
