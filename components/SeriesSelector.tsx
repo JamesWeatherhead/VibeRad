@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Series, DicomWebConfig } from '../types';
 import { Layers, Loader2 } from 'lucide-react';
 import { fetchDicomImageBlob } from '../services/dicomService';
+import { SERIES_DESCRIPTIONS } from '../constants';
 
 interface SeriesSelectorProps {
   seriesList: Series[];
@@ -93,9 +94,12 @@ const SeriesThumbnail: React.FC<SeriesThumbnailProps> = ({ series, isActive, onC
     }
   };
 
+  const tooltip = SERIES_DESCRIPTIONS[series.description] || series.description;
+
   return (
     <div
       onClick={() => onClick(series)}
+      title={tooltip}
       className={`flex-shrink-0 w-24 h-24 bg-gray-950 border rounded-lg cursor-pointer relative group overflow-hidden transition-all ${
         isActive 
           ? 'border-indigo-500 ring-1 ring-indigo-500/50 shadow-lg shadow-indigo-900/20' 
@@ -142,16 +146,23 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({ seriesList, activeSerie
   if (seriesList.length === 0) return null;
 
   return (
-    <div className="h-32 bg-black border-t border-gray-800 flex overflow-x-auto no-scrollbar items-center p-2 gap-2">
-      {seriesList.map((series) => (
-        <SeriesThumbnail 
-           key={series.id}
-           series={series}
-           isActive={activeSeriesId === series.id}
-           onClick={onSelectSeries}
-           dicomConfig={dicomConfig}
-        />
-      ))}
+    <div className="bg-black border-t border-gray-800 flex flex-col">
+       <div className="px-3 py-2 bg-slate-900/80 border-b border-slate-800 backdrop-blur-sm z-10">
+           <span className="text-xs text-slate-300 block leading-tight">
+             <strong className="text-slate-200">Series browser</strong> · Different MRI “looks” of the same brain. Hover a tile to see what that view is good for.
+           </span>
+       </div>
+       <div className="h-28 flex overflow-x-auto no-scrollbar items-center px-2 gap-2 bg-black/50">
+          {seriesList.map((series) => (
+            <SeriesThumbnail 
+               key={series.id}
+               series={series}
+               isActive={activeSeriesId === series.id}
+               onClick={onSelectSeries}
+               dicomConfig={dicomConfig}
+            />
+          ))}
+       </div>
     </div>
   );
 };

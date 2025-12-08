@@ -1,8 +1,10 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, MessageSquarePlus, RefreshCw } from 'lucide-react';
-import { streamChatResponse, generateFollowUpQuestions } from '../services/aiService';
+import { Bot, Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, MessageSquarePlus } from 'lucide-react';
+import { streamChatResponse } from '../services/aiService';
 import { ChatMessage, CursorContext } from '../types';
 import { MarkdownText } from '../utils/markdownUtils';
+import { SUGGESTED_FOLLOWUPS } from '../constants';
 
 interface AiAssistantPanelProps {
   onCaptureScreen?: () => string | null;
@@ -26,12 +28,6 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
   ]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
-  const [currentSuggestions, setCurrentSuggestions] = useState<string[]>([
-    "What anatomical structures are here?",
-    "How would a report describe this?",
-    "Common teaching points for this region?"
-  ]);
   const [mode, setMode] = useState<'standard' | 'thinking' | 'search'>('standard');
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [attachedScreenshot, setAttachedScreenshot] = useState<string | null>(null);
@@ -39,19 +35,6 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
   useEffect(() => {
     if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
   }, [messages]);
-
-  useEffect(() => {
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg.role === 'model' && !lastMsg.isThinking && messages.length > 1) {
-        const lastUserMsg = messages[messages.length - 2];
-        if (lastUserMsg.role === 'user') {
-            setIsGeneratingSuggestions(true);
-            generateFollowUpQuestions(lastUserMsg.text, lastMsg.text)
-                .then(suggs => { if (suggs.length > 0) setCurrentSuggestions(suggs); })
-                .finally(() => setIsGeneratingSuggestions(false));
-        }
-    }
-  }, [messages.length, isThinking]);
 
   const handleCapture = () => {
     if (onCaptureScreen) {
@@ -69,7 +52,6 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsThinking(true);
-    setCurrentSuggestions([]);
     
     const imageToSend = attachedScreenshot;
     setAttachedScreenshot(null);
@@ -142,15 +124,14 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
             ))}
         </div>
 
-        {!isThinking && currentSuggestions.length > 0 && (
+        {!isThinking && (
             <div className="px-4 pb-4 flex flex-col gap-2 flex-shrink-0 border-t border-transparent">
                 <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase">
                      <span className="flex items-center gap-1"><MessageSquarePlus className="w-3 h-3" /> Suggested Follow-ups</span>
-                     {isGeneratingSuggestions && <RefreshCw className="w-3 h-3 animate-spin" />}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    {currentSuggestions.map((sugg, idx) => (
-                        <button key={idx} onClick={() => handleSendMessage(sugg)} disabled={isGeneratingSuggestions} className="text-left text-xs bg-slate-800 hover:bg-slate-700 text-indigo-200 px-3 py-1.5 rounded-full border border-slate-700 transition-all">
+                    {SUGGESTED_FOLLOWUPS.map((sugg, idx) => (
+                        <button key={idx} onClick={() => handleSendMessage(sugg)} className="text-left text-xs bg-slate-800 hover:bg-slate-700 text-indigo-200 px-3 py-1.5 rounded-full border border-slate-700 transition-all">
                             {sugg}
                         </button>
                     ))}

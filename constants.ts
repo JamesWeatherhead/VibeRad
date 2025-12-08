@@ -1,3 +1,4 @@
+
 import { ToolMode, Segment } from "./types";
 import { 
   MousePointer2, 
@@ -50,4 +51,22 @@ export const MOCK_SEGMENTATION_DATA: Segment[] = [
   { id: 11, label: 'Hippocampus', color: [220, 216, 20], isVisible: true },
   { id: 12, label: 'Amygdala', color: [103, 255, 255], isVisible: true },
   { id: 13, label: 'Brain Stem', color: [119, 159, 176], isVisible: true },
+];
+
+export const SERIES_DESCRIPTIONS: Record<string, string> = {
+  "ST2W/FLAIR": "Good at showing brain swelling and old scars.",
+  "sT2W/FLAIR": "Good at showing brain swelling and old scars.",
+  "T2W/FE-EPI": "Helps pick up small or hidden areas of bleeding.",
+  "ST2/TSE/T": "Water sensitive scan. Fluid and swelling look bright.",
+  "sT2/TSE/T": "Water sensitive scan. Fluid and swelling look bright.",
+  "T1/SE/extrp": "Basic anatomy view of the brain structures.",
+  "SOUS": "Special scan that makes blood or metal changes stand out.",
+  "T1/3D/FFE/C": "3D scan after contrast dye. Tumors and vessels stand out.",
+};
+
+export const SUGGESTED_FOLLOWUPS = [
+  "Walk me through the anatomy on this slice.",
+  "What is this MRI sequence good for?",
+  "Help me describe what I see in simple terms.",
+  "Quiz me on this region and then explain the answers.",
 ];
