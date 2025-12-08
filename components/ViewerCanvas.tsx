@@ -1,8 +1,8 @@
-import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import { Series, ToolMode, ViewportState, Point, Measurement, DicomWebConfig, SegmentationLayer, ViewerHandle, Segment } from '../types';
 import { DEFAULT_VIEWPORT_STATE } from '../constants';
 import { fetchDicomImageBlob } from '../services/dicomService';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertTriangle, Move } from 'lucide-react';
 
 interface ViewerCanvasProps {
   series: Series | null;
@@ -53,6 +53,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   
   // Responsive Canvas State
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
+  const lastSizeRef = useRef<{ width: number; height: number } | null>(null);
 
   // Interaction State (Refs for synchronous updates during high-frequency events)
   const interactionRef = useRef({
@@ -207,6 +208,9 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
     ctx.save();
     
     // Transform
+    // Centering: (CanvasWidth / 2) + PanX
+    // This logic automatically keeps the image centered when canvas resizes,
+    // as canvas.width / 2 updates with the container.
     ctx.translate(canvas.width / 2 + viewport.pan.x, canvas.height / 2 + viewport.pan.y);
     ctx.scale(viewport.scale, viewport.scale);
     
@@ -259,25 +263,54 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
   // --- EFFECTS ---
 
-  // 0. Resize Observer (Fix for blank canvas on resize)
-  useEffect(() => {
+  // 0. Resize Observer (Fix for blank canvas on resize and ensuring responsive centering)
+  // Use useLayoutEffect to update state synchronously before browser paint
+  useLayoutEffect(() => {
     if (!containerRef.current) return;
     
+    let animationFrameId: number;
+
     const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
+      // Use requestAnimationFrame to sync with paint cycle and debounce
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+      animationFrameId = requestAnimationFrame(() => {
+        if (!entries.length) return;
+        const entry = entries[0];
         // Use contentRect to get dimensions without padding/border
         const { width, height } = entry.contentRect;
-        setCanvasSize({ 
-           width: Math.floor(width), 
-           height: Math.floor(height) 
-        });
-      }
+        
+        const newW = Math.round(width);
+        const newH = Math.round(height);
+
+        // Avoid redundant updates if dimensions match strictly
+        if (lastSizeRef.current && lastSizeRef.current.width === newW && lastSizeRef.current.height === newH) {
+           return;
+        }
+
+        // Adjust Pan to keep the image centered during resize
+        if (lastSizeRef.current) {
+            const deltaX = (newW - lastSizeRef.current.width) / 2;
+            const deltaY = (newH - lastSizeRef.current.height) / 2;
+            
+            if (deltaX !== 0 || deltaY !== 0) {
+                setViewport(vp => ({
+                    ...vp,
+                    pan: { x: vp.pan.x + deltaX, y: vp.pan.y + deltaY }
+                }));
+            }
+        }
+        
+        lastSizeRef.current = { width: newW, height: newH };
+        setCanvasSize({ width: newW, height: newH });
+      });
     });
 
     resizeObserver.observe(containerRef.current);
     
     return () => {
       resizeObserver.disconnect();
+      cancelAnimationFrame(animationFrameId);
     };
   }, []);
 
@@ -356,7 +389,9 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   }, [series, sliceIndex, connectionType, dicomConfig]);
 
   // 4. Render Loop (Triggered by state changes, including resize)
-  useEffect(() => {
+  // useLayoutEffect ensures the render happens synchronously after DOM mutations (resize)
+  // preventing the "black flash" or disappearing canvas issue.
+  useLayoutEffect(() => {
     renderScene();
   }, [viewport, currentImageBitmap, measurements, activeMeasurementId, draftMeasurement, sliceIndex, segmentationLayer, renderTick, canvasSize]);
 
@@ -580,6 +615,26 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      }
   };
 
+  const centerView = () => {
+    if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const newW = Math.round(rect.width);
+        const newH = Math.round(rect.height);
+
+        setCanvasSize(prev => {
+            if (prev.width === newW && prev.height === newH) return prev;
+            // Sync ref to prevent jumps on next resize
+            lastSizeRef.current = { width: newW, height: newH };
+            return { width: newW, height: newH };
+        });
+    }
+
+    setViewport((vp) => ({
+      ...vp,
+      pan: { x: 0, y: 0 },
+    }));
+  };
+
   const getFilterStyle = () => {
     const c = (DEFAULT_VIEWPORT_STATE.windowWidth / viewport.windowWidth) * 100;
     const b = 100 + ((DEFAULT_VIEWPORT_STATE.windowCenter - viewport.windowCenter) / 5);
@@ -650,8 +705,19 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         <div>Scale: {viewport.scale.toFixed(2)}x</div>
         {segmentationLayer.isVisible && <div className="text-emerald-400 mt-1">SEG: On ({(segmentationLayer.opacity*100).toFixed(0)}%)</div>}
       </div>
-      <div className="absolute bottom-4 right-8 text-xs font-mono text-blue-400 pointer-events-none drop-shadow-md">
-        Image: {sliceIndex + 1} / {series.instanceCount}
+      <div className="absolute bottom-4 right-8 flex items-center gap-3 text-xs font-mono pointer-events-auto">
+        <button
+            type="button"
+            onClick={centerView}
+            className="px-2 py-1 rounded-md bg-slate-800/80 text-slate-100 border border-slate-600 hover:bg-slate-700/90 flex items-center gap-1.5"
+        >
+            <Move className="w-3 h-3" />
+            Center view
+        </button>
+
+        <span className="text-blue-400 drop-shadow-md pointer-events-none">
+            Image: {sliceIndex + 1} / {series.instanceCount}
+        </span>
       </div>
     </div>
   );
