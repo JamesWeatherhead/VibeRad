@@ -10,6 +10,7 @@ interface FloatingToolbarProps {
   position: { x: number; y: number };
   onDragStart: (e: React.MouseEvent) => void;
   orientation: 'horizontal' | 'vertical';
+  isDragging?: boolean;
 }
 
 const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
@@ -18,13 +19,17 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   onCapture,
   position,
   onDragStart,
-  orientation
+  orientation,
+  isDragging
 }) => {
   const isVertical = orientation === 'vertical';
 
   return (
     <div
-      className={`absolute z-40 flex items-center bg-slate-900/95 border border-slate-700 rounded-2xl shadow-2xl backdrop-blur-md select-none transition-all duration-200 ${
+      className={`absolute z-40 flex items-center bg-slate-900/95 border border-slate-700 rounded-2xl shadow-2xl backdrop-blur-md select-none ${
+        // Only apply transition when NOT dragging to avoid lag/rubber-banding
+        !isDragging ? 'transition-all duration-200' : ''
+      } ${
         isVertical ? 'flex-col w-16 py-1' : 'flex-row h-16 px-1'
       }`}
       style={{

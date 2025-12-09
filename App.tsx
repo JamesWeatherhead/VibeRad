@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import StudyList from './components/StudyList';
 import ViewerCanvas from './components/ViewerCanvas';
 import SeriesSelector from './components/SeriesSelector';
@@ -66,7 +66,12 @@ const App: React.FC = () => {
   const [toolbarPos, setToolbarPos] = useState({ x: 0, y: 0 }); 
   const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
   const [toolbarOrientation, setToolbarOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
-  const dragStartRef = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number } | null>(null);
+  const dragStartRef = useRef<{ 
+    mouseX: number; 
+    mouseY: number; 
+    offsetX: number; 
+    offsetY: number; 
+  } | null>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
 
   // Center toolbar initially
@@ -84,54 +89,59 @@ const App: React.FC = () => {
     const handleMouseMove = (e: MouseEvent) => {
         if (!isDraggingToolbar || !dragStartRef.current || !viewerContainerRef.current) return;
         
-        const deltaX = e.clientX - dragStartRef.current.mouseX;
-        const deltaY = e.clientY - dragStartRef.current.mouseY;
-        
-        // Calculate intended raw position
-        let newX = dragStartRef.current.startX + deltaX;
-        let newY = dragStartRef.current.startY + deltaY;
+        e.preventDefault();
+
+        // Pinned Drag Logic:
+        // Position = Current Mouse + Initial Offset (Difference between Toolbar and Mouse at start)
+        let newX = e.clientX + dragStartRef.current.offsetX;
+        let newY = e.clientY + dragStartRef.current.offsetY;
         
         const { clientWidth, clientHeight } = viewerContainerRef.current;
         
-        // Edge Docking Logic
-        const EDGE_THRESHOLD = 56;
-        const PADDING = 16;
-        const TB_WIDTH_HORIZONTAL = 460;
-        const TB_WIDTH_VERTICAL = 80;
+        // Dimensions based on CURRENT orientation (no flipping during drag to avoid jitters)
+        const tbW = toolbarOrientation === 'horizontal' ? 460 : 80;
+        const tbH = toolbarOrientation === 'horizontal' ? 80 : 460;
         
-        // Use orientation at drag start (captured in closure) to determine active width for hit testing
-        const startWidth = toolbarOrientation === 'horizontal' ? TB_WIDTH_HORIZONTAL : TB_WIDTH_VERTICAL;
-        
-        let intendedOrientation: 'horizontal' | 'vertical' = 'horizontal';
-
-        // Check if docked to left edge
-        if (newX <= EDGE_THRESHOLD) {
-            intendedOrientation = 'vertical';
-            newX = PADDING; 
-        } 
-        // Check if docked to right edge (considering the right edge of the bar)
-        else if (newX + startWidth >= clientWidth - EDGE_THRESHOLD) {
-            intendedOrientation = 'vertical';
-            newX = clientWidth - TB_WIDTH_VERTICAL - PADDING;
-        }
-        else {
-            intendedOrientation = 'horizontal';
-        }
-
-        // Determine dimensions based on intended orientation for clamping
-        const tbW = intendedOrientation === 'horizontal' ? TB_WIDTH_HORIZONTAL : TB_WIDTH_VERTICAL;
-        const tbH = intendedOrientation === 'horizontal' ? 80 : 460;
-        
-        // Constrain to container
+        // Clamp to container bounds
         newX = Math.max(0, Math.min(newX, clientWidth - tbW));
         newY = Math.max(0, Math.min(newY, clientHeight - tbH));
         
+        // Update state on every move for realtime feel
+        // Note: FloatingToolbar has CSS transition disabled during dragging to ensure smoothness
         setToolbarPos({ x: newX, y: newY });
-        setToolbarOrientation(intendedOrientation);
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
+        if (!isDraggingToolbar || !dragStartRef.current || !viewerContainerRef.current) return;
+
         setIsDraggingToolbar(false);
+        
+        // Perform axis snap ONLY on drag end
+        // Use the last known mouse position from the event to calculate final placement logic
+        let checkX = e.clientX + dragStartRef.current.offsetX;
+        const { clientWidth } = viewerContainerRef.current;
+        
+        // Recalculate clamp for logic consistency
+        const currentW = toolbarOrientation === 'horizontal' ? 460 : 80;
+        checkX = Math.max(0, Math.min(checkX, clientWidth - currentW));
+
+        const EDGE_THRESHOLD = 100; // Pixels from edge to trigger vertical snap
+        
+        let newOrientation = toolbarOrientation;
+        
+        // Left Edge Check
+        if (checkX < EDGE_THRESHOLD) {
+            newOrientation = 'vertical';
+        } 
+        // Right Edge Check
+        else if (checkX + currentW > clientWidth - EDGE_THRESHOLD) {
+            newOrientation = 'vertical';
+        } 
+        else {
+            newOrientation = 'horizontal';
+        }
+        
+        setToolbarOrientation(newOrientation);
         dragStartRef.current = null;
     };
 
@@ -143,18 +153,22 @@ const App: React.FC = () => {
         window.removeEventListener('mousemove', handleMouseMove);
         window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDraggingToolbar]);
+  }, [isDraggingToolbar, toolbarOrientation]);
 
-  const handleToolbarDragStart = (e: React.MouseEvent) => {
+  const handleToolbarDragStart = useCallback((e: React.MouseEvent) => {
       e.preventDefault();
+      // Record initial offset so the toolbar stays exactly under the cursor relative to where it was grabbed
+      const offsetX = toolbarPos.x - e.clientX;
+      const offsetY = toolbarPos.y - e.clientY;
+
       setIsDraggingToolbar(true);
       dragStartRef.current = {
           mouseX: e.clientX,
           mouseY: e.clientY,
-          startX: toolbarPos.x,
-          startY: toolbarPos.y
+          offsetX,
+          offsetY
       };
-  };
+  }, [toolbarPos.x, toolbarPos.y]);
 
   // Robust Auto-boot logic
   useEffect(() => {
@@ -310,7 +324,7 @@ const App: React.FC = () => {
     }
   }, [activeSeries?.id]);
 
-  const handleMeasurementAdd = (m: Measurement) => {
+  const handleMeasurementAdd = useCallback((m: Measurement) => {
     if (!activeSeriesId) return;
     setMeasurementsBySeries(prev => ({
         ...prev,
@@ -319,30 +333,39 @@ const App: React.FC = () => {
     setActiveMeasurementId(m.id);
     setActiveTool(ToolMode.POINTER); 
     setActiveRightTab('measure'); 
-  };
+  }, [activeSeriesId]);
 
-  const handleMeasurementUpdate = (id: string, updates: Partial<Measurement>) => {
+  // Wrapped for ViewerCanvas prop stability
+  const onMeasurementUpdateStable = useCallback((m: Measurement) => {
+    if (!activeSeriesId) return;
+    setMeasurementsBySeries(prev => ({
+        ...prev,
+        [activeSeriesId]: (prev[activeSeriesId] || []).map(item => item.id === m.id ? m : item)
+    }));
+  }, [activeSeriesId]);
+
+  const handleMeasurementUpdate = useCallback((id: string, updates: Partial<Measurement>) => {
     if (!activeSeriesId) return;
     setMeasurementsBySeries(prev => ({
         ...prev,
         [activeSeriesId]: (prev[activeSeriesId] || []).map(m => m.id === id ? { ...m, ...updates } : m)
     }));
-  };
+  }, [activeSeriesId]);
 
-  const handleMeasurementDelete = (id: string) => {
+  const handleMeasurementDelete = useCallback((id: string) => {
     if (!activeSeriesId) return;
     setMeasurementsBySeries(prev => ({
         ...prev,
         [activeSeriesId]: (prev[activeSeriesId] || []).filter(m => m.id !== id)
     }));
     if (activeMeasurementId === id) setActiveMeasurementId(null);
-  };
+  }, [activeSeriesId, activeMeasurementId]);
   
   const handleCaptureScreen = () => {
       return viewerRef.current?.captureScreenshot() || null;
   };
 
-  const performGlobalCapture = () => {
+  const performGlobalCapture = useCallback(() => {
     const screenshot = handleCaptureScreen();
     if (screenshot) {
         setAiContextImage(screenshot);
@@ -354,7 +377,7 @@ const App: React.FC = () => {
         setShowCaptureToast(true);
         setTimeout(() => setShowCaptureToast(false), 3000);
     }
-  };
+  }, [sliceIndex, activeSeries, selectedStudy]);
 
   const clearGlobalCapture = () => {
     setAiContextImage(null);
@@ -367,7 +390,7 @@ const App: React.FC = () => {
      }
   };
 
-  const handleSegmentedSliceUpdate = (sliceIdx: number, labelCount: number) => {
+  const handleSegmentedSliceUpdate = useCallback((sliceIdx: number, labelCount: number) => {
     setSegmentationLayer(prev => {
         // Remove existing entry for this slice
         const filtered = prev.segmentedSlices.filter(s => s.sliceIndex !== sliceIdx);
@@ -384,7 +407,7 @@ const App: React.FC = () => {
             segmentedSlices: filtered
         };
     });
-  };
+  }, []);
 
   return (
     <div className="flex h-screen w-screen bg-black text-gray-200 font-sans overflow-hidden flex-col">
@@ -508,6 +531,7 @@ const App: React.FC = () => {
                     position={toolbarPos}
                     onDragStart={handleToolbarDragStart}
                     orientation={toolbarOrientation}
+                    isDragging={isDraggingToolbar}
                   />
 
                   <ViewerCanvas 
@@ -520,7 +544,7 @@ const App: React.FC = () => {
                     onSliceChange={setSliceIndex}
                     measurements={measurements}
                     onMeasurementAdd={handleMeasurementAdd}
-                    onMeasurementUpdate={(m) => handleMeasurementUpdate(m.id, m)}
+                    onMeasurementUpdate={onMeasurementUpdateStable}
                     activeMeasurementId={activeMeasurementId}
                     segmentationLayer={segmentationLayer}
                     onSegmentedSliceUpdate={handleSegmentedSliceUpdate}

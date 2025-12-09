@@ -889,4 +889,4 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   );
 });
 
-export default ViewerCanvas;
+export default React.memo(ViewerCanvas);
