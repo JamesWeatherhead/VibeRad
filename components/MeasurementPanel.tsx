@@ -1,6 +1,6 @@
 import React from 'react';
 import { Measurement } from '../types';
-import { Trash2, Edit2, Ruler, ArrowRight, Target } from 'lucide-react';
+import { Trash2, Ruler, ArrowRight, Target } from 'lucide-react';
 
 interface MeasurementPanelProps {
   measurements: Measurement[];
@@ -80,7 +80,6 @@ const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
                       className="bg-transparent text-sm font-medium text-slate-200 focus:outline-none focus:border-b border-indigo-500 w-32"
                       onClick={(e) => e.stopPropagation()}
                     />
-                    <Edit2 className="w-3 h-3 text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                   <button
                     onClick={(e) => {
