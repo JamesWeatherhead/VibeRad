@@ -1,7 +1,6 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, MessageSquarePlus, Trash2 } from 'lucide-react';
-import { streamChatResponse } from '../services/aiService';
+import { streamChatResponse, AiMode } from '../services/aiService';
 import { ChatMessage, CursorContext } from '../types';
 import { MarkdownText } from '../utils/markdownUtils';
 import { SUGGESTED_FOLLOWUPS } from '../constants';
@@ -28,7 +27,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
   ]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  const [mode, setMode] = useState<'standard' | 'thinking' | 'search'>('standard');
+  const [mode, setMode] = useState<AiMode>('chat');
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [attachedScreenshot, setAttachedScreenshot] = useState<string | null>(null);
   
@@ -71,7 +70,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
     setAttachedScreenshot(null);
 
     let modePrefix = "You are in STANDARD mode. Give a concise, clinically oriented explanation using the Markdown rules above.\n\n";
-    if (mode === 'thinking') {
+    if (mode === 'deep_think') {
          modePrefix = "You are in DEEP THINK mode. Consider the question carefully, but still present only a concise explanation and structured Markdown sections. Do not show long step-by-step reasoning.\n\n";
     } else if (mode === 'search') {
          modePrefix = "You are in WEB SEARCH mode. Use external search tools when helpful and respond with short, citation-style bullet lists under headings like \"## Guideline Snippets\" and \"## Evidence Summary\", following the Markdown rules above.\n\n";
@@ -87,14 +86,13 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
     }
 
     const botMsgId = (Date.now() + 1).toString();
-    setMessages(prev => [...prev, { id: botMsgId, role: 'model', text: '', isThinking: mode === 'thinking' }]);
+    setMessages(prev => [...prev, { id: botMsgId, role: 'model', text: '', isThinking: mode === 'deep_think' }]);
 
     let fullText = '';
     
     await streamChatResponse(
         promptToSend, 
-        mode === 'thinking', 
-        mode === 'search', 
+        mode,
         imageToSend, 
         (chunk, sources, toolCalls, followUps, fullTextReplace) => {
             // Handle Tool Calls (Navigation)
@@ -186,9 +184,27 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
         <div className="p-4 bg-slate-900 border-t border-slate-800 flex-shrink-0">
             {/* Mode Selection */}
             <div className="flex gap-2 justify-center mb-4">
-                <button onClick={() => setMode('standard')} className={`px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'standard' ? 'bg-slate-700 border-slate-500 text-white' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}>Standard</button>
-                <button onClick={() => setMode('thinking')} className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'thinking' ? 'bg-purple-900/50 border-purple-500 text-purple-200' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}><BrainCircuit className="w-3 h-3" /> Deep Think</button>
-                <button onClick={() => setMode('search')} className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'search' ? 'bg-blue-900/50 border-blue-500 text-blue-200' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}><Globe className="w-3 h-3" /> Web Search</button>
+                <button 
+                  onClick={() => setMode('chat')} 
+                  title="Fast text chat, optionally using the last captured slice if you click the camera."
+                  className={`px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'chat' ? 'bg-slate-700 border-slate-500 text-white' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}
+                >
+                  Chat (Gemini 3 • low thinking)
+                </button>
+                <button 
+                  onClick={() => setMode('deep_think')} 
+                  title="Slow, structured teaching for the last captured slice."
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'deep_think' ? 'bg-purple-900/50 border-purple-500 text-purple-200' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}
+                >
+                  <BrainCircuit className="w-3 h-3" /> Deep Think (Gemini 3 • high thinking)
+                </button>
+                <button 
+                  onClick={() => setMode('search')} 
+                  title="High-reasoning answers grounded by Google Search, using the last captured slice if provided."
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'search' ? 'bg-blue-900/50 border-blue-500 text-blue-200' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}
+                >
+                  <Globe className="w-3 h-3" /> Search (Gemini 3 + web)
+                </button>
             </div>
 
             {/* Attached Image Preview */}
@@ -214,7 +230,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
                 <div className="relative flex-1">
                     <input 
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg pr-10 pl-4 py-2.5 text-sm focus:border-purple-500 focus:outline-none text-slate-200 placeholder:text-slate-600 shadow-inner" 
-                        placeholder={mode === 'thinking' ? "Ask complex question..." : "Ask a question..."} 
+                        placeholder={mode === 'deep_think' ? "Ask complex question..." : "Ask a question..."} 
                         value={input} 
                         onChange={(e) => setInput(e.target.value)} 
                         onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} 

@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { Measurement } from "../types";
 
@@ -58,7 +57,7 @@ Your goals:
 
 CORE FUNCTIONAL RULES:
 - Cursor Aware: You explicitly see the current slice index and series context. Refer to it if relevant.
-- Tool Use: You can navigate the viewer using 'set_cursor_frame(index)'. Use this if the user asks to "scroll to slice 50" or "jump to the middle".
+- Tool Use: You CANNOT navigate the viewer directly. If the user asks to "scroll", explain that you cannot control the viewer but can guide them on what to look for at specific levels.
 
 Radiology orientation rules (VERY IMPORTANT):
 - Assume standard radiology convention for axial CT/MR:
@@ -102,6 +101,38 @@ Example:
 FOLLOW_UPS: ["Question 1", "Question 2"]
 `;
 
+// --- MODE CONFIGURATION ---
+
+export type AiMode = 'chat' | 'deep_think' | 'search';
+
+interface ModeConfiguration {
+  model: string;
+  thinkingLevel: 'low' | 'high';
+  mediaResolution: 'MEDIA_RESOLUTION_LOW' | 'MEDIA_RESOLUTION_MEDIUM' | 'MEDIA_RESOLUTION_HIGH';
+  useSearch: boolean;
+}
+
+const MODE_CONFIG: Record<AiMode, ModeConfiguration> = {
+  chat: {
+    model: 'gemini-3-pro-preview',
+    thinkingLevel: 'low',
+    mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+    useSearch: false
+  },
+  deep_think: {
+    model: 'gemini-3-pro-preview',
+    thinkingLevel: 'high',
+    mediaResolution: 'MEDIA_RESOLUTION_HIGH',
+    useSearch: false
+  },
+  search: {
+    model: 'gemini-3-pro-preview',
+    thinkingLevel: 'high',
+    mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+    useSearch: true
+  }
+};
+
 // --- AUDIO TRANSCRIPTION ---
 
 export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
@@ -117,7 +148,7 @@ export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
     });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       contents: {
         parts: [
           { inlineData: { mimeType: 'audio/mp3', data: base64Audio } },
@@ -155,9 +186,13 @@ export const generateRadiologyReport = async (payload: ReportPayload, imageBase6
   // Handle Multimodal (JSON + Image)
   if (imageBase64) {
       const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+      // Report generation uses High resolution for best detail
       contents = {
           parts: [
-              { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
+              { 
+                inlineData: { mimeType: 'image/jpeg', data: cleanBase64 }
+                // mediaResolution removed due to API incompatibility
+              },
               { text: `Generate a teaching summary based on this image context and the following metadata: ${jsonPrompt}` }
           ]
       };
@@ -169,7 +204,7 @@ export const generateRadiologyReport = async (payload: ReportPayload, imageBase6
       contents: contents,
       config: {
         systemInstruction: VIBERAD_SYSTEM_PROMPT,
-        thinkingConfig: { thinkingBudget: 16384 } 
+        thinkingConfig: { thinkingLevel: 'high' } 
       }
     });
 
@@ -186,21 +221,6 @@ export const generateRadiologyReport = async (payload: ReportPayload, imageBase6
 };
 
 // --- CHAT WITH THINKING & SEARCH & VISION ---
-
-// Tool Definition for Navigation
-const NAV_TOOLS = [{
-    functionDeclarations: [{
-        name: "set_cursor_frame",
-        description: "Navigates the DICOM viewer to a specific slice index.",
-        parameters: {
-            type: "OBJECT",
-            properties: {
-                index: { type: "NUMBER", description: "The 0-based slice index to jump to." }
-            },
-            required: ["index"]
-        }
-    }]
-}];
 
 const FOLLOW_UP_PREFIX = "FOLLOW_UPS:";
 
@@ -228,48 +248,47 @@ function extractFollowUps(raw: string): { content: string; followUps: string[] }
 
 export const streamChatResponse = async (
   message: string,
-  useThinking: boolean,
-  useSearch: boolean,
+  mode: AiMode,
   imageBase64: string | null,
   onChunk: (text: string, sources?: any[], toolCalls?: any[], followUps?: string[], fullTextReplace?: string) => void
 ) => {
   try {
-    let model = 'gemini-2.5-flash';
-    let config: any = {
-        systemInstruction: RADIOLOGY_ASSISTANT_SYSTEM_PROMPT
-    };
-    let tools: any[] = [...NAV_TOOLS]; // Always available
+    const currentConfig = MODE_CONFIG[mode];
+    
+    // Tools logic:
+    // Chat & Deep Think = No tools.
+    // Search = Google Search only.
+    // Navigation (function calling) is currently unsupported with Thinking models.
+    let tools: any[] | undefined = undefined;
+    if (currentConfig.useSearch) {
+      tools = [{ googleSearch: {} }];
+    }
+
     let contents: any = message;
 
-    // Construct Payload
+    // Construct Payload with optional image and specific media resolution
     if (imageBase64) {
       const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+      const imagePart: any = {
+        inlineData: { mimeType: 'image/jpeg', data: cleanBase64 }
+        // mediaResolution removed due to API incompatibility
+      };
+
       contents = {
         parts: [
-          { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
+          imagePart,
           { text: message }
         ]
       };
-      
-      // Pro for Vision + Thinking
-      if (useThinking) {
-        model = 'gemini-3-pro-preview';
-        config.thinkingConfig = { thinkingBudget: 32768 };
-      }
-    } else if (useThinking) {
-      model = 'gemini-3-pro-preview';
-      config.thinkingConfig = { thinkingBudget: 32768 };
-    } else if (useSearch) {
-      model = 'gemini-2.5-flash';
-      tools.push({ googleSearch: {} });
     }
 
     const responseStream = await ai.models.generateContentStream({
-      model: model,
+      model: currentConfig.model,
       contents: contents,
       config: {
-        ...config,
-        tools: tools.length > 0 ? tools : undefined
+        systemInstruction: RADIOLOGY_ASSISTANT_SYSTEM_PROMPT,
+        thinkingConfig: { thinkingLevel: currentConfig.thinkingLevel },
+        tools: tools
       }
     });
 
@@ -278,11 +297,6 @@ export const streamChatResponse = async (
     for await (const chunk of responseStream) {
       const c = chunk as GenerateContentResponse;
       
-      // Handle Tool Calls (Navigation)
-      if (c.functionCalls) {
-          onChunk("", undefined, c.functionCalls);
-      }
-
       if (c.text) {
         // Accumulate full text for post-processing
         fullText += c.text;
@@ -334,9 +348,9 @@ export const generateFollowUpQuestions = async (lastUserMessage: string, lastBot
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
-      config: { temperature: 0.3 }
+      config: { thinkingConfig: { thinkingLevel: 'low' } }
     });
 
     const text = response.text || "";
