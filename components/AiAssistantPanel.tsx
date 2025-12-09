@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, MessageSquarePlus, Trash2 } from 'lucide-react';
 import { streamChatResponse } from '../services/aiService';
@@ -30,6 +31,9 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
   const [mode, setMode] = useState<'standard' | 'thinking' | 'search'>('standard');
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [attachedScreenshot, setAttachedScreenshot] = useState<string | null>(null);
+  
+  // State for dynamic suggested follow-ups
+  const [suggestedFollowups, setSuggestedFollowups] = useState<string[]>(SUGGESTED_FOLLOWUPS);
 
   useEffect(() => {
     if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -50,6 +54,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
     }]);
     setAttachedScreenshot(null);
     setInput('');
+    setSuggestedFollowups(SUGGESTED_FOLLOWUPS);
   };
 
   const handleSendMessage = async (text: string = input) => {
@@ -85,20 +90,43 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
     setMessages(prev => [...prev, { id: botMsgId, role: 'model', text: '', isThinking: mode === 'thinking' }]);
 
     let fullText = '';
-    await streamChatResponse(promptToSend, mode === 'thinking', mode === 'search', imageToSend, (chunk, sources, toolCalls) => {
-        // Handle Tool Calls (Navigation)
-        if (toolCalls && onJumpToSlice) {
-            toolCalls.forEach(call => {
-                if (call.name === 'set_cursor_frame') {
-                    const idx = Math.round(call.args.index);
-                    if (!isNaN(idx)) onJumpToSlice(idx);
-                }
-            });
+    
+    await streamChatResponse(
+        promptToSend, 
+        mode === 'thinking', 
+        mode === 'search', 
+        imageToSend, 
+        (chunk, sources, toolCalls, followUps, fullTextReplace) => {
+            // Handle Tool Calls (Navigation)
+            if (toolCalls && onJumpToSlice) {
+                toolCalls.forEach(call => {
+                    if (call.name === 'set_cursor_frame') {
+                        const idx = Math.round(call.args.index);
+                        if (!isNaN(idx)) onJumpToSlice(idx);
+                    }
+                });
+            }
+            
+            // Handle text updates
+            if (fullTextReplace !== undefined) {
+                fullText = fullTextReplace;
+            } else {
+                fullText += chunk;
+            }
+            
+            // Update suggestions if provided by the model
+            if (followUps && followUps.length > 0) {
+                setSuggestedFollowups(followUps);
+            }
+
+            setMessages(prev => prev.map(m => m.id === botMsgId ? { 
+                ...m, 
+                text: fullText, 
+                sources: sources || m.sources,
+                followUps: followUps || m.followUps
+            } : m));
         }
-        
-        fullText += chunk;
-        setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: fullText, sources: sources || m.sources } : m));
-    });
+    );
 
     setIsThinking(false);
   };
@@ -145,7 +173,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
                          <MessageSquarePlus className="w-3 h-3" /> Suggested Follow-ups
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        {SUGGESTED_FOLLOWUPS.map((sugg, idx) => (
+                        {suggestedFollowups.map((sugg, idx) => (
                             <button key={idx} onClick={() => handleSendMessage(sugg)} className="text-left text-xs bg-slate-800 hover:bg-slate-700 text-indigo-200 px-3 py-1.5 rounded-full border border-slate-700 transition-all">
                                 {sugg}
                             </button>

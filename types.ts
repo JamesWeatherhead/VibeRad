@@ -118,4 +118,5 @@ export interface ChatMessage {
   sources?: Array<{ uri: string; title: string }>;
   hasAttachment?: boolean;
   suggestions?: string[]; // Dynamic follow-up suggestions
+  followUps?: string[]; // Parsed educational follow-ups
 }

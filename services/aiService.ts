@@ -93,11 +93,13 @@ Formatting rules:
   - Bullet lists starting with "- ".
   - **Bold** to highlight key phrases.
 - Do NOT use tables, images, or fenced code blocks.
-- Keep answers concise and scannable with short sections like:
-  - "## Key Imaging Features"
-  - "## Anatomy / Region"
-  - "## Teaching Points"
-  - "## Safety Note"
+- Keep answers concise and scannable.
+
+IMPORTANT:
+At the very end of your response, you MUST generate a list of 2-4 short, educational follow-up questions relevant to the slice and your explanation.
+Format this list as a valid JSON array of strings on a new line, prefixed exactly with "FOLLOW_UPS:".
+Example:
+FOLLOW_UPS: ["Question 1", "Question 2"]
 `;
 
 // --- AUDIO TRANSCRIPTION ---
@@ -200,12 +202,36 @@ const NAV_TOOLS = [{
     }]
 }];
 
+const FOLLOW_UP_PREFIX = "FOLLOW_UPS:";
+
+function extractFollowUps(raw: string): { content: string; followUps: string[] } {
+  const idx = raw.lastIndexOf(FOLLOW_UP_PREFIX);
+  if (idx === -1) return { content: raw.trim(), followUps: [] };
+
+  const content = raw.slice(0, idx).trim();
+  const jsonPart = raw.slice(idx + FOLLOW_UP_PREFIX.length).trim();
+
+  try {
+    const parsed = JSON.parse(jsonPart);
+    if (Array.isArray(parsed)) {
+      return {
+        content,
+        followUps: parsed.filter((q) => typeof q === "string"),
+      };
+    }
+  } catch {
+    // If parsing fails, just return the content with no follow-ups
+  }
+
+  return { content, followUps: [] };
+}
+
 export const streamChatResponse = async (
   message: string,
   useThinking: boolean,
   useSearch: boolean,
   imageBase64: string | null,
-  onChunk: (text: string, sources?: any[], toolCalls?: any[]) => void
+  onChunk: (text: string, sources?: any[], toolCalls?: any[], followUps?: string[], fullTextReplace?: string) => void
 ) => {
   try {
     let model = 'gemini-2.5-flash';
@@ -247,6 +273,8 @@ export const streamChatResponse = async (
       }
     });
 
+    let fullText = "";
+
     for await (const chunk of responseStream) {
       const c = chunk as GenerateContentResponse;
       
@@ -256,6 +284,9 @@ export const streamChatResponse = async (
       }
 
       if (c.text) {
+        // Accumulate full text for post-processing
+        fullText += c.text;
+        
         // Grounding
         const groundingChunks = c.candidates?.[0]?.groundingMetadata?.groundingChunks;
         let sources = undefined;
@@ -265,6 +296,14 @@ export const streamChatResponse = async (
         onChunk(c.text, sources);
       }
     }
+
+    // Post-stream processing: Extract and clean follow-ups
+    const { content, followUps } = extractFollowUps(fullText);
+    if (followUps.length > 0) {
+        // Send replacement text (content) and followUps
+        onChunk("", undefined, undefined, followUps, content);
+    }
+
   } catch (error: any) {
     console.error("Chat Error:", error);
     onChunk(`\n[System Error]: ${error.message}`);
@@ -287,12 +326,6 @@ export const generateFollowUpQuestions = async (lastUserMessage: string, lastBot
       - Focus on Anatomy, Image Interpretation Skills, or General Teaching.
       - DO NOT ask for diagnosis, differential diagnosis, management, or prognosis.
       - DO NOT suggest questions that imply diagnosing this specific case.
-
-      ALLOWED Question Styles:
-      - Anatomy: "What structures are adjacent?"
-      - Description: "How would a report describe this?"
-      - Orientation: "How does this look on MRI vs CT?"
-      - General: "Common teaching points for this region?"
 
       Format rules:
       - Return ONLY the questions, one per line.
