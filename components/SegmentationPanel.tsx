@@ -10,7 +10,8 @@ import {
   Plus,
   Eraser,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Edit2
 } from 'lucide-react';
 
 interface SegmentationPanelProps {
@@ -21,6 +22,15 @@ interface SegmentationPanelProps {
   onClearSegment?: (id: number) => void;
   onJumpToSlice?: (index: number) => void;
 }
+
+const componentToHex = (c: number) => {
+  const hex = c.toString(16);
+  return hex.length === 1 ? "0" + hex : hex;
+};
+
+const rgbToHex = (r: number, g: number, b: number) => {
+  return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+};
 
 const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
   layer,
@@ -288,19 +298,44 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
                     : 'hover:bg-slate-900'
                 }`}
               >
-                <div
-                  className="w-3 h-3 rounded-full shadow-sm ring-1 ring-white/10"
-                  style={{
-                    backgroundColor: `rgb(${seg.color.join(',')})`,
-                  }}
-                />
+                <div className="relative w-4 h-4 flex-shrink-0 group">
+                   <div 
+                      className="absolute inset-0 w-4 h-4 rounded-full shadow-sm ring-1 ring-white/10 pointer-events-none"
+                      style={{
+                        backgroundColor: `rgb(${seg.color.join(',')})`,
+                      }}
+                   />
+                   <input
+                      type="color"
+                      value={rgbToHex(seg.color[0], seg.color[1], seg.color[2])}
+                      onChange={(e) => {
+                          const newColor = hexToRgb(e.target.value);
+                          const updated = layer.segments.map(s => s.id === seg.id ? { ...s, color: newColor } : s);
+                          onChange({ ...layer, segments: updated });
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      title="Change color"
+                   />
+                </div>
 
-                <div
-                  className={`flex-1 min-w-0 text-sm font-medium truncate ${
-                    isActive ? 'text-white' : 'text-slate-400'
-                  }`}
-                >
-                  {seg.label}
+                <div className="flex-1 min-w-0 flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={seg.label}
+                    onChange={(e) => {
+                         const updated = layer.segments.map(s => s.id === seg.id ? { ...s, label: e.target.value } : s);
+                         onChange({ ...layer, segments: updated });
+                    }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveSegment(seg.id);
+                    }}
+                    className={`w-full bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none text-sm font-medium truncate py-0.5 transition-colors ${
+                       isActive ? 'text-white' : 'text-slate-400 hover:border-slate-700'
+                    }`}
+                  />
+                  <Edit2 className={`w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity ${isActive ? 'text-emerald-500' : 'text-slate-600'}`} />
                 </div>
               </div>
             );
