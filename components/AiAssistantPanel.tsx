@@ -76,7 +76,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   onCaptureScreen, 
   studyMetadata, 
   cursor, 
-  onJumpToSlice,
+  onJumpToSlice, 
   activeSeriesInfo 
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -114,29 +114,6 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
 
   useEffect(() => {
     if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-  }, [messages, isThinking]);
-
-  // Trigger suggestion generation when a MODEL message finishes
-  useEffect(() => {
-    const lastMsg = messages[messages.length - 1];
-    if (!isThinking && lastMsg && lastMsg.role === 'model' && messages.length > 1) {
-       // Find the last user message for context
-       const lastUserMsg = messages[messages.length - 2];
-       if (lastUserMsg && lastUserMsg.role === 'user') {
-          const hasImageContext = !!lastUserMsg.hasAttachment;
-          const label = capturedSliceInfo?.label || studyMetadata?.description || "MRI Slice";
-          const fullSliceLabel = capturedSliceInfo ? `Slice ${capturedSliceInfo.slice} (${label})` : label;
-
-          generateFollowUpQuestions(
-            lastUserMsg.text, 
-            lastMsg.text,
-            hasImageContext,
-            fullSliceLabel
-          ).then(suggestions => {
-             setDynamicSuggestionsMap(suggestions);
-          });
-       }
-    }
   }, [messages, isThinking]);
 
   // Derived suggestions: Use Dynamic if available, else Static Initial
@@ -235,7 +212,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             mode,
             learnerLevel, // Pass level to chat context
             imageToSend, 
-            (chunk, sources, toolCalls, followUps, fullTextReplace) => {
+            (chunk, sources, toolCalls, suggestionsPayload, fullTextReplace) => {
                 if (toolCalls && onJumpToSlice) {
                     toolCalls.forEach(call => {
                         if (call.name === 'set_cursor_frame') {
@@ -243,6 +220,11 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
                             if (!isNaN(idx)) onJumpToSlice(idx);
                         }
                     });
+                }
+
+                // Handle Inline Suggestions from Stream
+                if (suggestionsPayload) {
+                    setDynamicSuggestionsMap(suggestionsPayload);
                 }
                 
                 if (fullTextReplace !== undefined) {

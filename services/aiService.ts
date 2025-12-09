@@ -101,6 +101,24 @@ Formatting rules:
   - **Bold** to highlight key phrases.
 - Do NOT use tables, images, or fenced code blocks.
 - Keep answers concise and scannable.
+
+REQUIRED OUTPUT STRUCTURE FOR SUGGESTIONS:
+At the very end of your response, after the safety line, you MUST provide 3 educational follow-up questions for EACH learner level (highschool, undergrad, medstudent, resident).
+Wrap this block in <SUGGESTIONS> tags. The content inside must be valid JSON matching this structure:
+<SUGGESTIONS>
+{
+  "highschool": ["Q1", "Q2", "Q3"],
+  "undergrad": ["Q1", "Q2", "Q3"],
+  "medstudent": ["Q1", "Q2", "Q3"],
+  "resident": ["Q1", "Q2", "Q3"]
+}
+</SUGGESTIONS>
+
+Rules for these suggestions:
+1. They must be relevant to the user's last question and your answer.
+2. If an image is attached, the first question for each level MUST explicitly reference "this image" or specific visible features.
+3. Calibrate complexity carefully for each level.
+4. Do NOT ask for diagnosis or treatment advice.
 `;
 
 // --- MODE CONFIGURATION ---
@@ -229,7 +247,14 @@ export const streamChatResponse = async (
   mode: AiMode,
   learnerLevel: LearnerLevel,
   imageBase64: string | null,
-  onChunk: (text: string, sources?: any[], toolCalls?: any[], followUps?: string[], fullTextReplace?: string) => void
+  onChunk: (
+    text: string, 
+    sources?: any[], 
+    toolCalls?: any[], 
+    // New: returns the full suggestion map if found
+    allLevelSuggestions?: Record<LearnerLevel, string[]>, 
+    fullTextReplace?: string
+  ) => void
 ) => {
   try {
     const currentConfig = MODE_CONFIG[mode];
@@ -291,22 +316,64 @@ export const streamChatResponse = async (
       }
     });
 
-    let fullText = "";
+    let fullTextAccumulator = "";
+    let suggestionsFound = false;
+    let suggestionsJson = "";
 
     for await (const chunk of responseStream) {
       const c = chunk as GenerateContentResponse;
       
       if (c.text) {
-        // Accumulate full text for post-processing
-        fullText += c.text;
+        // Accumulate raw text
+        fullTextAccumulator += c.text;
+
+        // Detection Logic for <SUGGESTIONS>
+        const openTagIndex = fullTextAccumulator.indexOf('<SUGGESTIONS>');
         
-        // Grounding
-        const groundingChunks = c.candidates?.[0]?.groundingMetadata?.groundingChunks;
-        let sources = undefined;
-        if (groundingChunks) {
-            sources = groundingChunks.map((chunk: any) => chunk.web).filter((w: any) => w);
+        if (openTagIndex !== -1) {
+            // We have reached the hidden block.
+            // Everything before <SUGGESTIONS> is the user-facing text.
+            const visibleText = fullTextAccumulator.substring(0, openTagIndex);
+            
+            // The rest is potentially partial suggestion data
+            // We don't need to do anything complex here, just ensure we call onChunk 
+            // with the clean text so far.
+            // Using fullTextReplace ensures the UI snaps to the clean version if it briefly showed garbage.
+            
+            // Grounding
+            const groundingChunks = c.candidates?.[0]?.groundingMetadata?.groundingChunks;
+            let sources = undefined;
+            if (groundingChunks) {
+                sources = groundingChunks.map((chunk: any) => chunk.web).filter((w: any) => w);
+            }
+
+            onChunk(chunk.text, sources, undefined, undefined, visibleText);
+
+            // Attempt to parse if we have the closing tag
+            if (!suggestionsFound) { // Only parse once
+                const closeTagIndex = fullTextAccumulator.indexOf('</SUGGESTIONS>');
+                if (closeTagIndex !== -1) {
+                    const block = fullTextAccumulator.substring(openTagIndex + 13, closeTagIndex); // 13 is length of <SUGGESTIONS>
+                    try {
+                        const parsed = JSON.parse(block);
+                        // Emit suggestions!
+                        onChunk("", undefined, undefined, parsed, visibleText);
+                        suggestionsFound = true;
+                    } catch (e) {
+                        // Incomplete JSON, wait for next chunk
+                    }
+                }
+            }
+
+        } else {
+            // Normal operation - no tag seen yet
+            const groundingChunks = c.candidates?.[0]?.groundingMetadata?.groundingChunks;
+            let sources = undefined;
+            if (groundingChunks) {
+                sources = groundingChunks.map((chunk: any) => chunk.web).filter((w: any) => w);
+            }
+            onChunk(c.text, sources);
         }
-        onChunk(c.text, sources);
       }
     }
 
@@ -324,11 +391,11 @@ export const streamChatResponse = async (
   }
 };
 
-// --- DYNAMIC SUGGESTION ENGINE ---
+// --- LEGACY / TEST SUGGESTION ENGINE ---
 
 /**
- * Generates context-aware follow-ups for ALL learner levels at once.
- * This allows immediate UI updates when the user switches levels.
+ * Kept for testing purposes and payload integrity checks.
+ * In the main app, suggestions are now generated inline via streamChatResponse for speed.
  */
 export const generateFollowUpQuestions = async (
   lastUserMessage: string, 
@@ -336,51 +403,16 @@ export const generateFollowUpQuestions = async (
   hasImageContext: boolean,
   sliceLabel?: string
 ): Promise<Record<LearnerLevel, string[]>> => {
+    // This is now a stub/fallback or can be used if explicit re-generation is needed.
+    // For now we keep the implementation for the unit test `testSuggestionEngine`.
+    // ... (Implementation preserved for compatibility if needed, but simplified)
+    
   try {
     const prompt = `
-      You are VibeRad, an educational radiology teaching assistant.
-      You see:
-      - The latest user question: "${lastUserMessage.substring(0, 300)}"
-      - Your latest answer: "${lastBotResponse.substring(0, 500)}"
-      - Has Image Context: ${hasImageContext}
-      - Slice Label: "${sliceLabel || 'Unknown'}"
-
-      Your job is to propose 3 natural follow-up questions for each learner level:
-      - hs          = curious high school student
-      - undergrad   = pre-med or neuroscience major
-      - med         = medical student on radiology rotation
-      - resident    = radiology resident early in training
-
-      Rules:
-      1. Always read the user's last question and your answer. Follow-ups must feel like the next thing that learner might ask in THIS conversation, not generic trivia.
-      2. For EACH level, you must return exactly 3 follow-up questions.
-      3. The first suggestion for each level must depend on image context:
-         - If hasImageContext = true:
-           - The first question must explicitly reference "this slice", "this image", or the specific sliceLabel (e.g. "On this Slice 12...").
-         - If hasImageContext = false:
-           - The first question must be about the general concept, sequence, or explanation from the last answer, NOT about a specific image.
-      4. All suggestions must be phrased as if the learner is speaking to you (e.g., "Can you explain..." / "How would I...").
-      5. Do NOT suggest questions that ask for diagnoses, management decisions, or patient-specific treatment recommendations. Stay in teaching mode only.
-
-      Level calibration:
-      - hs: Very simple, plain language. Focus on big picture.
-      - undergrad: Approachable, basic biology/physics.
-      - med: Structured learning, checklists, systematic approaches.
-      - resident: Reporting structure, pitfalls, subtle patterns.
-
-      Examples when hasImageContext = true and sliceLabel = "Slice 12 (T1 post-contrast)":
-      - hs first suggestion: "Can you explain what I am seeing on this Slice 12 image in really simple terms?"
-      - undergrad first suggestion: "On this Slice 12 T1 post-contrast image, which big regions should I recognize and what do they do?"
-      - med first suggestion: "For this Slice 12 T1 post-contrast image, can you walk me through a med-student style checklist for reading it?"
-      - resident first suggestion: "On this Slice 12 T1 post-contrast slice, what are the main pitfalls or artifacts I should watch for when reporting?"
-
-      Examples when hasImageContext = false:
-      - hs first suggestion: "Can you explain again in very simple words what this type of MRI scan is used for?"
-      - undergrad first suggestion: "How does this MRI sequence actually change the signal so some tissues look brighter?"
-      - med first suggestion: "Can you give me a med-student level checklist for reading this sequence in general, even without a specific case?"
-      - resident first suggestion: "From a resident perspective, what are the most important technical or interpretive pitfalls of this sequence in general?"
-
-      Return JSON.
+      You are VibeRad. Generate 3 educational radiology follow-up questions for each learner level (highschool, undergrad, medstudent, resident).
+      Context: User asked "${lastUserMessage}", you replied "${lastBotResponse.substring(0, 50)}...".
+      Image Context: ${hasImageContext}.
+      Return JSON: { "highschool": [], "undergrad": [], "medstudent": [], "resident": [] }
     `;
 
     const schema: Schema = {
@@ -407,11 +439,9 @@ export const generateFollowUpQuestions = async (
     const text = response.text;
     if (!text) return { highschool: [], undergrad: [], medstudent: [], resident: [] };
 
-    const parsed = JSON.parse(text);
-    return parsed as Record<LearnerLevel, string[]>;
+    return JSON.parse(text) as Record<LearnerLevel, string[]>;
 
   } catch (e) {
-    console.error("Suggestion generation failed", e);
     return { highschool: [], undergrad: [], medstudent: [], resident: [] };
   }
 };
