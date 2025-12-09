@@ -413,7 +413,7 @@ const App: React.FC = () => {
     <div className="flex h-screen w-screen bg-black text-gray-200 font-sans overflow-hidden flex-col">
       {/* Top Main Header */}
       <header className="w-full bg-slate-950 border-b border-slate-800 flex-shrink-0 relative z-30">
-        <div className="mx-auto flex items-center justify-between px-4 h-14">
+        <div className="mx-auto flex items-center justify-between px-4 h-14 relative">
           {/* Left: Branding */}
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-600 shadow-lg shadow-indigo-500/20">
@@ -428,7 +428,7 @@ const App: React.FC = () => {
           </div>
 
           {/* Center: Disclaimer Pill */}
-          <div className="hidden md:flex items-center justify-center text-[10px] font-medium text-slate-500 gap-2 bg-slate-900/50 px-3 py-1.5 rounded-full border border-slate-800">
+          <div className="absolute left-1/2 -translate-x-1/2 hidden md:flex items-center justify-center text-[10px] font-medium text-slate-500 gap-2 bg-slate-900/50 px-3 py-1.5 rounded-full border border-slate-800">
             <Shield className="w-3 h-3 text-amber-500/80" />
             <span>Educational Demo Only</span>
             <span className="text-slate-700">•</span>
