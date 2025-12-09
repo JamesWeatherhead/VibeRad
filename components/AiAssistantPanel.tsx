@@ -15,9 +15,19 @@ interface AiAssistantPanelProps {
   };
   cursor?: CursorContext;
   onJumpToSlice?: (index: number) => void;
+  activeSeriesInfo?: {
+    description: string;
+    instanceCount: number;
+  };
 }
 
-const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, studyMetadata, cursor, onJumpToSlice }) => {
+const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ 
+  onCaptureScreen, 
+  studyMetadata, 
+  cursor, 
+  onJumpToSlice,
+  activeSeriesInfo 
+}) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { 
       id: 'welcome', 
@@ -30,7 +40,14 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
   const [mode, setMode] = useState<AiMode>('chat');
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [attachedScreenshot, setAttachedScreenshot] = useState<string | null>(null);
-  const [capturedSliceInfo, setCapturedSliceInfo] = useState<{slice: number} | null>(null);
+  
+  // Updated state to track slice index AND metadata at moment of capture
+  const [capturedSliceInfo, setCapturedSliceInfo] = useState<{
+    slice: number;
+    total?: number;
+    label?: string;
+  } | null>(null);
+  
   const [showCaptureToast, setShowCaptureToast] = useState(false);
   
   // State for dynamic suggested follow-ups
@@ -46,7 +63,11 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
         if (screenshot) {
             setAttachedScreenshot(screenshot);
             if (cursor) {
-                setCapturedSliceInfo({ slice: cursor.frameIndex + 1 });
+                setCapturedSliceInfo({ 
+                  slice: cursor.frameIndex + 1,
+                  total: activeSeriesInfo?.instanceCount,
+                  label: activeSeriesInfo?.description || studyMetadata?.description 
+                });
             }
             setShowCaptureToast(true);
             setTimeout(() => setShowCaptureToast(false), 4000);
@@ -77,27 +98,27 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
     setInput('');
     setIsThinking(true);
     
-    // Persistent Capture State: We use the attachedScreenshot if available, and we DO NOT clear it.
-    // This allows the user to ask follow-up questions about the same image.
+    // Persistent Capture State: We use the attachedScreenshot if available
     const imageToSend = attachedScreenshot;
 
     let promptToSend = userMsg.text;
     
-    // Inject Study Context only for Search Mode (Deep Think & Chat rely on image + prompt)
+    // Inject Study Context only for Search Mode
     if (mode === 'search' && studyMetadata) {
         promptToSend += `\n\nContext: Patient Scan (${studyMetadata.modality}, ${studyMetadata.description})`;
-        if (cursor) promptToSend += ` (Slice: ${cursor.frameIndex + 1})`;
+        if (capturedSliceInfo) promptToSend += ` (Captured Slice: ${capturedSliceInfo.slice})`;
+        else if (cursor) promptToSend += ` (Current Slice: ${cursor.frameIndex + 1})`;
     }
 
     const botMsgId = (Date.now() + 1).toString();
     
-    // Construct optional metadata if we are sending an image context
+    // Construct metadata for the model message UI
     let botMessageExtras = {};
     if (imageToSend) {
-       // Only include label if it's descriptive, otherwise leave undefined to trigger "Brain MRI series" fallback
-       let label = studyMetadata?.description;
+       // Use captured label or fallback
+       let label = capturedSliceInfo?.label || studyMetadata?.description;
        if (!label || label === "No Description" || label === "OT") {
-           label = undefined;
+           label = "MRI series";
        }
 
        botMessageExtras = {
@@ -164,6 +185,8 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
           default: return 'Low';
       }
   };
+
+  const hasCapturedImage = !!attachedScreenshot;
 
   return (
     <div className="flex flex-col h-full bg-slate-950">
@@ -320,12 +343,12 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
                     <button 
                         onClick={handleCapture} 
                         disabled={!onCaptureScreen} 
-                        title={attachedScreenshot ? "Using this slice. Click again to update the captured image." : "Capture current slice as context"}
-                        aria-label={attachedScreenshot ? "Update captured slice" : "Capture current slice as context"}
-                        className={`p-2.5 rounded-lg border transition-all ${
+                        title="Capture the current MRI slice so Gemini 3 can see it."
+                        aria-label="Capture current slice as context"
+                        className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all ${
                             attachedScreenshot 
-                            ? 'bg-purple-900/40 border-purple-500/50 text-purple-200 shadow-[0_0_10px_rgba(168,85,247,0.2)]' 
-                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
+                            ? 'bg-purple-900/60 border-purple-500/50 text-purple-200 shadow-[0_0_10px_rgba(168,85,247,0.2)]' 
+                            : 'bg-sky-900/60 border-sky-700/50 text-sky-200 hover:bg-sky-800'
                         }`}
                     >
                         <Camera className="w-5 h-5" />
@@ -351,10 +374,18 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
                 </div>
             </div>
 
-            {/* Helper Tip */}
-            <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-slate-500">
-                <Zap className="w-3 h-3 text-yellow-600" />
-                <span>Gemini 3 only sees the image after you click <strong className="text-slate-400">Capture 📸</strong>.</span>
+            {/* Dynamic Hint */}
+            <div className="mt-2 text-[11px] text-slate-400 leading-tight">
+                {!hasCapturedImage ? (
+                    <span>No image attached. Click the camera to capture the current slice before asking image questions.</span>
+                ) : (
+                    <span>
+                        Using last captured slice: <span className="text-slate-200 font-mono">{capturedSliceInfo?.slice}</span>
+                        {capturedSliceInfo?.total && <span className="text-slate-500"> / {capturedSliceInfo.total}</span>}
+                        {<span className="text-slate-400"> ({capturedSliceInfo?.label || "MRI series"})</span>}
+                        . Click the camera again to update.
+                    </span>
+                )}
             </div>
         </div>
       </div>

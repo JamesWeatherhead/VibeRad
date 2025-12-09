@@ -328,6 +328,7 @@ const App: React.FC = () => {
                             studyMetadata={{ studyId: selectedStudy.id, patientName: selectedStudy.patientName, description: selectedStudy.description, modality: selectedStudy.modality }}
                             cursor={{ seriesInstanceUID: activeSeries?.id || '', frameIndex: sliceIndex, activeMeasurementId: activeMeasurementId }}
                             onJumpToSlice={setSliceIndex}
+                            activeSeriesInfo={activeSeries ? { description: activeSeries.description, instanceCount: activeSeries.instanceCount } : undefined}
                          />
                      </div>
                   </div>
