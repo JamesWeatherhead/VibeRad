@@ -9,7 +9,7 @@ import SafetyModal from './components/SafetyModal';
 import { TOOLS, MOCK_SEGMENTATION_DATA } from './constants';
 import { Study, Series, ToolMode, ConnectionType, DicomWebConfig, Measurement, SegmentationLayer, ViewerHandle } from './types';
 import { fetchDicomWebSeries, searchDicomWebStudies } from './services/dicomService';
-import { Ruler, Activity, Sparkles, GripVertical, Shield, Loader2 } from 'lucide-react';
+import { Ruler, Activity, Sparkles, GripVertical, Shield, Loader2, X } from 'lucide-react';
 
 const App: React.FC = () => {
   // connectionType defaults to DICOMWEB to skip intro
@@ -48,6 +48,21 @@ const App: React.FC = () => {
 
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  
+  // Onboarding State
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    const dismissed = localStorage.getItem("viberad_onboarding_dismissed");
+    if (!dismissed) {
+      setShowOnboarding(true);
+    }
+  }, []);
+
+  const dismissOnboarding = () => {
+    localStorage.setItem("viberad_onboarding_dismissed", "true");
+    setShowOnboarding(false);
+  };
 
   // Robust Auto-boot logic
   useEffect(() => {
@@ -259,6 +274,20 @@ const App: React.FC = () => {
 
           <div className="flex-1 flex overflow-hidden">
               <div className="flex-1 flex flex-col relative min-w-0">
+                  {showOnboarding && (
+                    <div className="mx-4 mt-2 mb-2 px-3 py-2 bg-slate-900/80 border border-slate-700 rounded-lg text-xs text-slate-200 flex items-center justify-between backdrop-blur-sm animate-in fade-in slide-in-from-top-1 z-20">
+                        <div className="flex items-center gap-3">
+                            <span className="text-indigo-400 font-bold">3 Steps:</span>
+                            <span>(1) Pick a series, (2) capture a slice with the camera, (3) ask VibeRad to teach you what you are seeing.</span>
+                        </div>
+                        <button 
+                            onClick={dismissOnboarding}
+                            className="text-[10px] uppercase font-bold text-slate-500 hover:text-indigo-400 flex items-center gap-1 transition-colors"
+                        >
+                            Got it <X className="w-3 h-3" />
+                        </button>
+                    </div>
+                  )}
                   <ViewerCanvas 
                     ref={viewerRef}
                     series={activeSeries} 

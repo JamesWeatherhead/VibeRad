@@ -700,7 +700,9 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
       {/* Info Overlays */}
       <div className="absolute top-4 left-4 text-xs font-mono text-lime-400 pointer-events-none drop-shadow-md">
-        <div className="text-sm font-bold text-white mb-1">ID: {series.id.slice(-6)}</div>
+        <div className="text-sm font-bold text-white mb-1">
+          {series.description && series.description !== 'No Description' ? series.description : series.modality}
+        </div>
         <div>Modality: {series.modality}</div>
         <div>Scale: {viewport.scale.toFixed(2)}x</div>
         {segmentationLayer.isVisible && <div className="text-emerald-400 mt-1">SEG: On ({(segmentationLayer.opacity*100).toFixed(0)}%)</div>}

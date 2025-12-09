@@ -284,7 +284,7 @@ const StudyList: React.FC<StudyListProps> = ({
 
       {/* Filters Bar */}
       <div className="bg-slate-900/50 border-b border-slate-800 p-4 grid grid-cols-12 gap-4">
-         <div className="col-span-3">
+         <div className="col-span-4">
             <div className="relative">
                <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
                <input 
@@ -295,23 +295,8 @@ const StudyList: React.FC<StudyListProps> = ({
                />
             </div>
          </div>
-         <div className="col-span-2">
-            <input 
-               className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-               placeholder="Filter MRN..."
-               value={filters.mrn}
-               onChange={e => setFilters({...filters, mrn: e.target.value})}
-            />
-         </div>
-         <div className="col-span-2">
-            <input 
-               className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-               placeholder="Filter Accession..."
-               value={filters.accession}
-               onChange={e => setFilters({...filters, accession: e.target.value})}
-            />
-         </div>
-         <div className="col-span-3">
+         {/* MRN and Accession filters removed for cleaner UI */}
+         <div className="col-span-5">
              <input 
                className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
                placeholder="Filter Description..."
@@ -319,7 +304,7 @@ const StudyList: React.FC<StudyListProps> = ({
                onChange={e => setFilters({...filters, description: e.target.value})}
             />
          </div>
-         <div className="col-span-2">
+         <div className="col-span-3">
             <input 
                className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
                placeholder="Filter Modality..."
@@ -335,8 +320,7 @@ const StudyList: React.FC<StudyListProps> = ({
           <thead className="bg-slate-900 sticky top-0 z-10 text-xs uppercase font-bold text-slate-500 tracking-wider">
              <tr>
                <th className="px-6 py-3 border-b border-slate-800">Patient Name</th>
-               <th className="px-6 py-3 border-b border-slate-800">MRN</th>
-               <th className="px-6 py-3 border-b border-slate-800">Accession #</th>
+               {/* MRN & Accession Removed */}
                <th className="px-6 py-3 border-b border-slate-800">Study Date</th>
                <th className="px-6 py-3 border-b border-slate-800 w-1/3">Description</th>
                <th className="px-6 py-3 border-b border-slate-800">Modality</th>
@@ -346,7 +330,7 @@ const StudyList: React.FC<StudyListProps> = ({
           <tbody className="text-sm divide-y divide-slate-800/50">
              {loading && (
                <tr>
-                 <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                 <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
                     <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
                     Loading Studies...
                  </td>
@@ -354,7 +338,7 @@ const StudyList: React.FC<StudyListProps> = ({
              )}
              {!loading && filteredStudies.length === 0 && (
                 <tr>
-                   <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                   <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
                       No studies found matching your filters.
                    </td>
                 </tr>
@@ -373,8 +357,6 @@ const StudyList: React.FC<StudyListProps> = ({
                        {study.patientName}
                      </div>
                    </td>
-                   <td className="px-6 py-4 text-slate-400 font-mono text-xs">{study.patientId}</td>
-                   <td className="px-6 py-4 text-slate-400 font-mono text-xs">{study.accessionNumber}</td>
                    <td className="px-6 py-4 text-slate-400">
                      <div className="flex items-center gap-2">
                         <Calendar className="w-3 h-3 text-slate-600" />
