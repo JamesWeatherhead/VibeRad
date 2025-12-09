@@ -37,6 +37,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const hasFittedRef = useRef(false);
   
   // Segmentation Data: Stores the ID Map (Red Channel = Segment ID)
   const maskCacheRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
@@ -51,7 +52,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentImageBitmap, setCurrentImageBitmap] = useState<HTMLImageElement | null>(null);
   
-  // Responsive Canvas State
+  // Responsive Canvas State - Init to non-zero to ensure visibility
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
   const lastSizeRef = useRef<{ width: number; height: number } | null>(null);
 
@@ -263,47 +264,32 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
   // --- EFFECTS ---
 
-  // 0. Resize Observer (Fix for blank canvas on resize and ensuring responsive centering)
-  // Use useLayoutEffect to update state synchronously before browser paint
+  // 0. Resize Observer
   useLayoutEffect(() => {
     if (!containerRef.current) return;
     
-    let animationFrameId: number;
-
     const resizeObserver = new ResizeObserver((entries) => {
-      // Use requestAnimationFrame to sync with paint cycle and debounce
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      if (!entries.length) return;
+      const entry = entries[0];
+      const { width, height } = entry.contentRect;
+      
+      // Ensure we have valid positive dimensions
+      if (width <= 0 || height <= 0) return;
 
-      animationFrameId = requestAnimationFrame(() => {
-        if (!entries.length) return;
-        const entry = entries[0];
-        // Use contentRect to get dimensions without padding/border
-        const { width, height } = entry.contentRect;
-        
-        const newW = Math.round(width);
-        const newH = Math.round(height);
+      const newW = Math.round(width);
+      const newH = Math.round(height);
 
-        // Avoid redundant updates if dimensions match strictly
-        if (lastSizeRef.current && lastSizeRef.current.width === newW && lastSizeRef.current.height === newH) {
-           return;
-        }
-
-        // REMOVED: Incorrect pan adjustment logic that caused drift.
-        // We do not need to adjust 'pan' when resizing because 
-        // ctx.translate(canvas.width / 2 + viewport.pan.x) automatically 
-        // keeps the image in the center of the new canvas size if pan is unchanged.
-        
-        lastSizeRef.current = { width: newW, height: newH };
-        setCanvasSize({ width: newW, height: newH });
-      });
+      // Avoid redundant updates if dimensions match strictly
+      if (lastSizeRef.current && lastSizeRef.current.width === newW && lastSizeRef.current.height === newH) {
+          return;
+      }
+      
+      lastSizeRef.current = { width: newW, height: newH };
+      setCanvasSize({ width: newW, height: newH });
     });
 
     resizeObserver.observe(containerRef.current);
-    
-    return () => {
-      resizeObserver.disconnect();
-      cancelAnimationFrame(animationFrameId);
-    };
+    return () => resizeObserver.disconnect();
   }, []);
 
   // 1. Reset Viewport on Series Change
@@ -314,8 +300,38 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
       maskCacheRef.current.clear();
       renderCacheRef.current.clear();
       setRenderTick(0);
+      
+      // Clear image and reset fit flag for new series
+      setCurrentImageBitmap(null);
+      hasFittedRef.current = false;
     }
   }, [series?.id]);
+
+  // Fit to View Logic (Runs once per series load)
+  useLayoutEffect(() => {
+    if (currentImageBitmap && !hasFittedRef.current && canvasSize.width > 0 && canvasSize.height > 0) {
+      const imgW = currentImageBitmap.width || 512;
+      const imgH = currentImageBitmap.height || 512;
+      
+      // Safety check for empty image dimensions
+      if (imgW === 0 || imgH === 0) return;
+
+      const scaleX = canvasSize.width / imgW;
+      const scaleY = canvasSize.height / imgH;
+      
+      // 0.95 margin ensures full visibility without touching edges
+      // Add minimum safety clamp to prevent disappearing logic
+      const scale = Math.max(0.05, Math.min(scaleX, scaleY) * 0.95);
+      
+      setViewport(prev => ({
+        ...prev,
+        scale,
+        pan: { x: 0, y: 0 }
+      }));
+      
+      hasFittedRef.current = true;
+    }
+  }, [currentImageBitmap, canvasSize.width, canvasSize.height]);
 
   // 2. Invalidate Render Cache when Segment Definitions Change
   useEffect(() => {
@@ -381,8 +397,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   }, [series, sliceIndex, connectionType, dicomConfig]);
 
   // 4. Render Loop (Triggered by state changes, including resize)
-  // useLayoutEffect ensures the render happens synchronously after DOM mutations (resize)
-  // preventing the "black flash" or disappearing canvas issue.
   useLayoutEffect(() => {
     renderScene();
   }, [viewport, currentImageBitmap, measurements, activeMeasurementId, draftMeasurement, sliceIndex, segmentationLayer, renderTick, canvasSize]);
@@ -615,7 +629,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
         setCanvasSize(prev => {
             if (prev.width === newW && prev.height === newH) return prev;
-            // Sync ref to prevent jumps on next resize
             lastSizeRef.current = { width: newW, height: newH };
             return { width: newW, height: newH };
         });
