@@ -119,4 +119,9 @@ export interface ChatMessage {
   hasAttachment?: boolean;
   suggestions?: string[]; // Dynamic follow-up suggestions
   followUps?: string[]; // Parsed educational follow-ups
+  
+  // Image Context Metadata (for UI thumbnails)
+  attachedSliceIndex?: number;
+  attachedSequenceLabel?: string;
+  attachedSliceThumbnailDataUrl?: string;
 }

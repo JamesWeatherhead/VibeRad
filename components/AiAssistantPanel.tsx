@@ -90,7 +90,30 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
     }
 
     const botMsgId = (Date.now() + 1).toString();
-    setMessages(prev => [...prev, { id: botMsgId, role: 'model', text: '', isThinking: mode === 'deep_think' }]);
+    
+    // Construct optional metadata if we are sending an image context
+    let botMessageExtras = {};
+    if (imageToSend) {
+       // Only include label if it's descriptive, otherwise leave undefined to trigger "Brain MRI series" fallback
+       let label = studyMetadata?.description;
+       if (!label || label === "No Description" || label === "OT") {
+           label = undefined;
+       }
+
+       botMessageExtras = {
+          attachedSliceThumbnailDataUrl: imageToSend,
+          attachedSliceIndex: capturedSliceInfo?.slice,
+          attachedSequenceLabel: label
+       };
+    }
+
+    setMessages(prev => [...prev, { 
+        id: botMsgId, 
+        role: 'model', 
+        text: '', 
+        isThinking: mode === 'deep_think',
+        ...botMessageExtras
+    }]);
 
     let fullText = '';
     
@@ -191,7 +214,33 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
             {messages.map((m) => (
                 <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                     <div className={`max-w-[95%] rounded-xl p-3 shadow-sm ${m.role === 'user' ? 'bg-gradient-to-br from-purple-900/40 to-indigo-900/40 text-purple-100 border border-purple-700/50' : 'bg-slate-800/80 text-slate-200 border border-slate-700'}`}>
-                        {m.hasAttachment && <div className="mb-2 text-xs text-purple-300 bg-purple-950/50 px-2 py-1 rounded w-fit flex gap-1"><ImageIcon className="w-3 h-3"/> Image Context Active</div>}
+                        
+                        {/* New Thumbnail Header for Model */}
+                        {m.role === 'model' && m.attachedSliceThumbnailDataUrl && (
+                             <div className="flex items-center gap-3 mb-3 pb-3 border-b border-white/10">
+                                 <img 
+                                    src={m.attachedSliceThumbnailDataUrl} 
+                                    className="w-16 h-16 rounded object-cover border border-white/10 bg-black/50"
+                                    alt="Analyzed Slice"
+                                 />
+                                 <div className="flex flex-col">
+                                    <span className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Teaching context</span>
+                                    <span className="text-[11px] text-slate-300 font-medium">
+                                       Slice {m.attachedSliceIndex ?? '?'} • {m.attachedSequenceLabel || 'Brain MRI series'}
+                                    </span>
+                                 </div>
+                             </div>
+                        )}
+
+                        {m.hasAttachment && m.role === 'user' && (
+                            <div 
+                                className="mb-2 text-xs text-purple-300 bg-purple-950/50 px-2 py-1 rounded w-fit flex gap-1 cursor-help"
+                                title="Gemini 3 is using the MRI slice you captured for this question."
+                            >
+                                <ImageIcon className="w-3 h-3"/> Using captured slice
+                            </div>
+                        )}
+                        
                         {m.isThinking && !m.text && <div className="text-xs text-slate-400 italic mb-1"><BrainCircuit className="w-3 h-3 animate-pulse inline mr-1"/> Thinking...</div>}
                         <MarkdownText content={m.text} />
                         {m.sources && m.sources.length > 0 && (
@@ -271,9 +320,13 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
                     <button 
                         onClick={handleCapture} 
                         disabled={!onCaptureScreen} 
-                        title="Capture current slice as context"
-                        aria-label="Capture current slice as context"
-                        className={`p-2.5 rounded-lg border transition-all ${attachedScreenshot ? 'bg-purple-900 border-purple-500 text-white ring-2 ring-purple-500/50' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'}`}
+                        title={attachedScreenshot ? "Using this slice. Click again to update the captured image." : "Capture current slice as context"}
+                        aria-label={attachedScreenshot ? "Update captured slice" : "Capture current slice as context"}
+                        className={`p-2.5 rounded-lg border transition-all ${
+                            attachedScreenshot 
+                            ? 'bg-purple-900/40 border-purple-500/50 text-purple-200 shadow-[0_0_10px_rgba(168,85,247,0.2)]' 
+                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
+                        }`}
                     >
                         <Camera className="w-5 h-5" />
                     </button>
