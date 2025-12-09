@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, Trash2, CheckCircle2, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, Trash2, CheckCircle2, AlertTriangle, RotateCcw, ArrowDown } from 'lucide-react';
 import { streamChatResponse, AiMode, generateFollowUpQuestions } from '../services/aiService';
 import { ChatMessage, CursorContext } from '../types';
 import { MarkdownText } from '../utils/markdownUtils';
@@ -100,6 +100,10 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   
   const [showCaptureToast, setShowCaptureToast] = useState(false);
   
+  // Scroll State
+  const [isUserNearBottom, setIsUserNearBottom] = useState(true);
+  const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
+  
   // Learner Level State
   const [learnerLevel, setLearnerLevel] = useState<LearnerLevel>(() => {
     return (localStorage.getItem('viberad_learner_level') as LearnerLevel) || 'medstudent';
@@ -112,9 +116,36 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
     localStorage.setItem('viberad_learner_level', learnerLevel);
   }, [learnerLevel]);
 
+  // Smart Auto-Scroll Effect
   useEffect(() => {
-    if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-  }, [messages, isThinking]);
+    if (chatContainerRef.current && isPinnedToBottom) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [messages, isThinking, isPinnedToBottom]);
+
+  const handleScroll = () => {
+    if (!chatContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    const isNear = distanceFromBottom < 80;
+    
+    setIsUserNearBottom(isNear);
+    
+    // If user pulls away from bottom, stop pinning
+    if (!isNear) {
+        setIsPinnedToBottom(false);
+    } else {
+        // If user returns to bottom, re-enable pinning
+        setIsPinnedToBottom(true);
+    }
+  };
+
+  const scrollToBottom = () => {
+    if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: 'smooth' });
+    }
+    setIsPinnedToBottom(true);
+  };
 
   // Derived suggestions: Use Dynamic if available, else Static Initial
   const currentSuggestions = dynamicSuggestionsMap 
@@ -153,6 +184,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
     setInput('');
     setShowCaptureToast(false);
     setDynamicSuggestionsMap(null);
+    setIsPinnedToBottom(true);
   };
 
   const handleSendMessage = async (text: string = input, promptOverride?: string) => {
@@ -164,6 +196,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
         id: Date.now().toString(), role: 'user', text: finalText, hasAttachment: !!attachedScreenshot
     };
     setMessages(prev => [...prev, userMsg]);
+    setIsPinnedToBottom(true); // Force scroll on new message
     
     // Save current input to restore on error if needed
     const textToRestore = input;
@@ -260,6 +293,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             originalPrompt: finalText // Save for retry
         };
         setMessages(prev => [...prev, errorMessage]);
+        setIsPinnedToBottom(true);
     } finally {
         setIsThinking(false);
     }
@@ -340,98 +374,116 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
           </div>
       </div>
 
+      {/* Messages Container with Independent Scrolling Context */}
       <div className="flex-1 overflow-hidden relative flex flex-col">
-        <div className="flex-1 overflow-y-auto p-4 space-y-5 no-scrollbar" ref={chatContainerRef}>
-            {messages.map((m) => {
-                if (m.role === 'error') {
-                   return (
-                      <div key={m.id} className="flex flex-col items-center animate-in fade-in slide-in-from-bottom-2">
-                          <div className="max-w-[90%] w-full bg-red-950/40 border border-red-500/30 rounded-xl p-3 flex items-start gap-3 shadow-lg">
-                              <div className="mt-0.5 p-1 bg-red-500/10 rounded-full">
-                                  <AlertTriangle className="w-4 h-4 text-red-400" />
-                              </div>
-                              <div className="flex-1">
-                                  <div className="text-xs font-bold text-red-300 mb-1">Gemini Request Failed</div>
-                                  <div className="text-xs text-red-200/80 leading-relaxed mb-2">
-                                     {m.text}
-                                  </div>
-                                  <div className="text-[10px] text-red-400/60 mb-2">
-                                     Your question has been preserved above.
-                                  </div>
-                                  {m.originalPrompt && (
-                                     <button 
-                                        onClick={() => handleSendMessage(m.originalPrompt)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs rounded-md border border-red-500/20 transition-colors"
-                                     >
-                                        <RotateCcw className="w-3 h-3" /> Retry Request
-                                     </button>
-                                  )}
-                              </div>
-                          </div>
-                      </div>
-                   );
-                }
-
-                return (
-                <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-                    <div className={`max-w-[95%] rounded-xl p-3 shadow-sm ${m.role === 'user' ? 'bg-gradient-to-br from-purple-900/40 to-indigo-900/40 text-purple-100 border border-purple-700/50' : 'bg-slate-800/80 text-slate-200 border border-slate-700'}`}>
-                        
-                        {/* New Thumbnail Header for Model */}
-                        {m.role === 'model' && m.attachedSliceThumbnailDataUrl && (
-                             <div className="flex items-center gap-3 mb-3 pb-3 border-b border-white/10">
-                                 <img 
-                                    src={m.attachedSliceThumbnailDataUrl} 
-                                    className="w-16 h-16 rounded object-cover border border-white/10 bg-black/50"
-                                    alt="Analyzed Slice"
-                                 />
-                                 <div className="flex flex-col">
-                                    <span className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Teaching context</span>
-                                    <span className="text-[11px] text-slate-300 font-medium">
-                                       Slice {m.attachedSliceIndex ?? '?'} • {m.attachedSequenceLabel || 'Brain MRI series'}
-                                    </span>
-                                 </div>
-                             </div>
-                        )}
-
-                        {m.hasAttachment && m.role === 'user' && (
-                            <div 
-                                className="mb-2 text-xs text-purple-300 bg-purple-950/50 px-2 py-1 rounded w-fit flex gap-1 cursor-help"
-                                title="Gemini 3 is using the MRI slice you captured for this question."
-                            >
-                                <ImageIcon className="w-3 h-3"/> Using captured slice
+        <div className="flex-1 relative min-h-0">
+            <div 
+                className="absolute inset-0 overflow-y-auto p-4 space-y-5 no-scrollbar" 
+                ref={chatContainerRef}
+                onScroll={handleScroll}
+            >
+                {messages.map((m) => {
+                    if (m.role === 'error') {
+                    return (
+                        <div key={m.id} className="flex flex-col items-center animate-in fade-in slide-in-from-bottom-2">
+                            <div className="max-w-[90%] w-full bg-red-950/40 border border-red-500/30 rounded-xl p-3 flex items-start gap-3 shadow-lg">
+                                <div className="mt-0.5 p-1 bg-red-500/10 rounded-full">
+                                    <AlertTriangle className="w-4 h-4 text-red-400" />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="text-xs font-bold text-red-300 mb-1">Gemini Request Failed</div>
+                                    <div className="text-xs text-red-200/80 leading-relaxed mb-2">
+                                        {m.text}
+                                    </div>
+                                    <div className="text-[10px] text-red-400/60 mb-2">
+                                        Your question has been preserved above.
+                                    </div>
+                                    {m.originalPrompt && (
+                                        <button 
+                                            onClick={() => handleSendMessage(m.originalPrompt)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs rounded-md border border-red-500/20 transition-colors"
+                                        >
+                                            <RotateCcw className="w-3 h-3" /> Retry Request
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                        )}
-                        
-                        {m.isThinking && !m.text && <div className="text-xs text-slate-400 italic mb-1"><BrainCircuit className="w-3 h-3 animate-pulse inline mr-1"/> Thinking...</div>}
-                        <MarkdownText content={m.text} />
-                        {m.sources && m.sources.length > 0 && (
-                            <div className="mt-3 pt-2 border-t border-white/10">
-                                <div className="text-[10px] font-bold text-slate-500 mb-1 flex items-center gap-1"><Globe className="w-3 h-3"/> Sources</div>
-                                {m.sources.map((src, i) => <a key={i} href={src.uri} target="_blank" className="block text-xs text-blue-400 truncate hover:underline">{src.title || src.uri}</a>)}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )})}
+                        </div>
+                    );
+                    }
 
-            {!isThinking && currentSuggestions.length > 0 && (
-                <div className="mt-3 animate-in fade-in duration-300">
-                    <div className="mb-2 text-[10px] text-slate-500 uppercase font-bold ml-1">
-                        Suggested Follow-ups
+                    return (
+                    <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                        <div className={`max-w-[95%] rounded-xl p-3 shadow-sm ${m.role === 'user' ? 'bg-gradient-to-br from-purple-900/40 to-indigo-900/40 text-purple-100 border border-purple-700/50' : 'bg-slate-800/80 text-slate-200 border border-slate-700'}`}>
+                            
+                            {/* New Thumbnail Header for Model */}
+                            {m.role === 'model' && m.attachedSliceThumbnailDataUrl && (
+                                <div className="flex items-center gap-3 mb-3 pb-3 border-b border-white/10">
+                                    <img 
+                                        src={m.attachedSliceThumbnailDataUrl} 
+                                        className="w-16 h-16 rounded object-cover border border-white/10 bg-black/50"
+                                        alt="Analyzed Slice"
+                                    />
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Teaching context</span>
+                                        <span className="text-[11px] text-slate-300 font-medium">
+                                        Slice {m.attachedSliceIndex ?? '?'} • {m.attachedSequenceLabel || 'Brain MRI series'}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {m.hasAttachment && m.role === 'user' && (
+                                <div 
+                                    className="mb-2 text-xs text-purple-300 bg-purple-950/50 px-2 py-1 rounded w-fit flex gap-1 cursor-help"
+                                    title="Gemini 3 is using the MRI slice you captured for this question."
+                                >
+                                    <ImageIcon className="w-3 h-3"/> Using captured slice
+                                </div>
+                            )}
+                            
+                            {m.isThinking && !m.text && <div className="text-xs text-slate-400 italic mb-1"><BrainCircuit className="w-3 h-3 animate-pulse inline mr-1"/> Thinking...</div>}
+                            <MarkdownText content={m.text} />
+                            {m.sources && m.sources.length > 0 && (
+                                <div className="mt-3 pt-2 border-t border-white/10">
+                                    <div className="text-[10px] font-bold text-slate-500 mb-1 flex items-center gap-1"><Globe className="w-3 h-3"/> Sources</div>
+                                    {m.sources.map((src, i) => <a key={i} href={src.uri} target="_blank" className="block text-xs text-blue-400 truncate hover:underline">{src.title || src.uri}</a>)}
+                                </div>
+                            )}
+                        </div>
                     </div>
-                    {/* Dynamic Suggestion Chips */}
-                    <div className="flex flex-wrap gap-2 mb-4">
-                        {currentSuggestions.map((sugg, idx) => (
-                            <button 
-                                key={idx} 
-                                onClick={() => handleSendMessage(sugg)} 
-                                className="text-left text-xs bg-slate-800 hover:bg-slate-700 text-indigo-200 px-3 py-1.5 rounded-full border border-slate-700 transition-all active:scale-95"
-                            >
-                                {sugg}
-                            </button>
-                        ))}
+                )})}
+
+                {!isThinking && currentSuggestions.length > 0 && (
+                    <div className="mt-3 animate-in fade-in duration-300">
+                        <div className="mb-2 text-[10px] text-slate-500 uppercase font-bold ml-1">
+                            Suggested Follow-ups
+                        </div>
+                        {/* Dynamic Suggestion Chips */}
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {currentSuggestions.map((sugg, idx) => (
+                                <button 
+                                    key={idx} 
+                                    onClick={() => handleSendMessage(sugg)} 
+                                    className="text-left text-xs bg-slate-800 hover:bg-slate-700 text-indigo-200 px-3 py-1.5 rounded-full border border-slate-700 transition-all active:scale-95"
+                                >
+                                    {sugg}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                </div>
+                )}
+            </div>
+
+            {/* Jump To Latest Pill */}
+            {!isPinnedToBottom && (
+                <button 
+                    onClick={scrollToBottom}
+                    className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-800/90 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 shadow-lg rounded-full px-4 py-1.5 text-xs font-bold flex items-center gap-2 transition-all animate-in fade-in slide-in-from-bottom-2 z-10 backdrop-blur-sm"
+                >
+                    <ArrowDown className="w-3.5 h-3.5" />
+                    Jump to latest
+                </button>
             )}
         </div>
 
