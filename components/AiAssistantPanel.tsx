@@ -439,25 +439,51 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
 
                     // THINKING BUBBLE (Render if role=model and text is empty)
                     if (m.role === 'model' && !m.text) {
+                        let subtitleText = "";
+                        if (mode === 'deep_think') {
+                            subtitleText = "Gemini is reasoning step by step before answering.";
+                        } else if (mode === 'search') {
+                            subtitleText = "Gemini is searching and synthesizing key findings.";
+                        } else {
+                            // Chat mode default
+                            const levelLabels: Record<string, string> = {
+                                highschool: "High school",
+                                undergrad: "Undergrad",
+                                medstudent: "Med",
+                                resident: "Resident"
+                            };
+                            const label = levelLabels[learnerLevel] || "Med";
+                            subtitleText = `Gemini is preparing a ${label}-level explanation.`;
+                        }
+
                         return (
-                            <div key={m.id} className="flex flex-col items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                <div className="relative max-w-[85%] rounded-2xl rounded-tl-sm p-[1px] bg-gradient-to-br from-purple-500/30 via-indigo-500/30 to-slate-700/30 shadow-lg shadow-purple-900/10">
-                                   <div className="bg-slate-900/95 backdrop-blur-xl rounded-[15px] rounded-tl-sm p-4 flex flex-col gap-3">
-                                       {/* Header */}
-                                       <div className="flex items-center gap-2 text-purple-300 text-xs font-bold uppercase tracking-wider">
-                                            <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-                                            <span>Analyzing Slice</span>
-                                        </div>
-                                        
-                                        {/* Content */}
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex space-x-1">
-                                                <div className="w-2 h-2 bg-purple-500 rounded-full animate-[bounce_1s_infinite_-0.3s]"></div>
-                                                <div className="w-2 h-2 bg-indigo-500 rounded-full animate-[bounce_1s_infinite_-0.15s]"></div>
-                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-[bounce_1s_infinite]"></div>
-                                            </div>
-                                            <span className="text-xs text-slate-400 font-medium">Processing visual context...</span>
-                                        </div>
+                            <div key={m.id} className="flex flex-col items-start animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
+                                <div className="max-w-[95%] rounded-xl p-4 shadow-sm bg-gradient-to-b from-purple-900/10 to-slate-800/90 border border-purple-500/20 backdrop-blur-sm">
+                                   
+                                   {/* Title Row */}
+                                   <div className="flex items-center justify-between gap-4 mb-2">
+                                       <div className="flex items-center gap-2 text-purple-100 font-bold text-sm">
+                                           <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
+                                           <span>Teaching in progress</span>
+                                       </div>
+                                       <div className="text-[9px] font-mono uppercase tracking-wider bg-purple-950/40 border border-purple-500/20 px-2 py-0.5 rounded-full text-purple-300 whitespace-nowrap">
+                                           Thinking: {getThinkingLevelLabel()}
+                                       </div>
+                                   </div>
+
+                                   {/* Subtitle */}
+                                   <div className="text-xs text-slate-300 mb-3 leading-relaxed font-medium">
+                                       {subtitleText}
+                                   </div>
+
+                                   {/* Status Row */}
+                                   <div className="flex items-center gap-2 text-xs text-slate-400">
+                                       <div className="flex space-x-1">
+                                            <div className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-[bounce_1s_infinite_-0.3s]"></div>
+                                            <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-[bounce_1s_infinite_-0.15s]"></div>
+                                            <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-[bounce_1s_infinite]"></div>
+                                       </div>
+                                       <span className="text-purple-200/60">Generating your answer...</span>
                                    </div>
                                 </div>
                             </div>
