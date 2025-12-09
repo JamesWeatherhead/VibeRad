@@ -41,12 +41,14 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   const containerRef = useRef<HTMLDivElement>(null);
   const hasFittedRef = useRef(false);
   
-  // Segmentation Data: Stores the ID Map (Red Channel = Segment ID)
-  const maskCacheRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
-  // Segmentation Visual: Stores the colored, visible output
-  const renderCacheRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
-  // Segmentation Tracking: Tracks unique segment IDs per slice (sliceIndex -> Set<segmentId>)
-  const sliceSegmentIdsRef = useRef<Map<number, Set<number>>>(new Map());
+  // Segmentation Data: Keyed by Series ID -> Slice Index
+  // Map<SeriesID, Map<SliceIndex, Canvas>>
+  const maskCacheRef = useRef<Map<string, Map<number, HTMLCanvasElement>>>(new Map());
+  const renderCacheRef = useRef<Map<string, Map<number, HTMLCanvasElement>>>(new Map());
+  const sliceSegmentIdsRef = useRef<Map<string, Map<number, Set<number>>>>(new Map());
+  
+  // Track current series ID to handle async restoration safely
+  const currentSeriesIdRef = useRef<string | null>(null);
   
   // Local Viewport State (Pan/Zoom/WWWC only)
   const [viewport, setViewport] = useState<ViewportState>(DEFAULT_VIEWPORT_STATE);
@@ -73,6 +75,22 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   
   const [draftMeasurement, setDraftMeasurement] = useState<Measurement | null>(null);
   
+  // Helper to get caches for the current series
+  const getSeriesCaches = () => {
+    if (!series?.id) return null;
+    const key = series.id;
+    
+    if (!maskCacheRef.current.has(key)) maskCacheRef.current.set(key, new Map());
+    if (!renderCacheRef.current.has(key)) renderCacheRef.current.set(key, new Map());
+    if (!sliceSegmentIdsRef.current.has(key)) sliceSegmentIdsRef.current.set(key, new Map());
+    
+    return {
+       maskBySlice: maskCacheRef.current.get(key)!,
+       renderBySlice: renderCacheRef.current.get(key)!,
+       sliceIdsBySlice: sliceSegmentIdsRef.current.get(key)!
+    };
+  };
+
   // Expose Capabilities
   useImperativeHandle(ref, () => ({
     captureScreenshot: () => {
@@ -83,40 +101,47 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
       return null;
     },
     removeSegment: (id: number) => {
-      // Iterate over all cached masks and clear pixels with the given segment ID
-      maskCacheRef.current.forEach((canvas) => {
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        if (!ctx) return;
-        const w = canvas.width;
-        const h = canvas.height;
-        const imageData = ctx.getImageData(0, 0, w, h);
-        const data = imageData.data;
-        let dirty = false;
-        
-        for (let i = 0; i < data.length; i += 4) {
-           // Check if this pixel belongs to the segment (ID stored in Red channel)
-           // and is not fully transparent
-           if (data[i] === id && data[i+3] > 0) {
-               data[i+3] = 0; // Clear alpha to 0 (erase)
-               dirty = true;
-           }
-        }
-        
-        if (dirty) {
-           ctx.putImageData(imageData, 0, 0);
-        }
+      // Iterate over all series caches to remove the segment ID
+      maskCacheRef.current.forEach((maskBySlice, seriesKey) => {
+          maskBySlice.forEach((canvas) => {
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            if (!ctx) return;
+            const w = canvas.width;
+            const h = canvas.height;
+            const imageData = ctx.getImageData(0, 0, w, h);
+            const data = imageData.data;
+            let dirty = false;
+            
+            for (let i = 0; i < data.length; i += 4) {
+               // Check if this pixel belongs to the segment (ID stored in Red channel)
+               // and is not fully transparent
+               if (data[i] === id && data[i+3] > 0) {
+                   data[i+3] = 0; // Clear alpha to 0 (erase)
+                   dirty = true;
+               }
+            }
+            
+            if (dirty) {
+               ctx.putImageData(imageData, 0, 0);
+            }
+          });
       });
       
-      // Update tracking sets to remove this ID
-      sliceSegmentIdsRef.current.forEach((ids, sliceIdx) => {
-        if (ids.has(id)) {
-            ids.delete(id);
-            onSegmentedSliceUpdate?.(sliceIdx, ids.size);
-        }
+      // Update tracking sets to remove this ID from all series/slices
+      sliceSegmentIdsRef.current.forEach((sliceIdsBySlice, seriesKey) => {
+          sliceIdsBySlice.forEach((ids, sliceIdx) => {
+            if (ids.has(id)) {
+                ids.delete(id);
+                // Only notify if we are modifying the CURRENT visible series
+                if (seriesKey === series?.id) {
+                    onSegmentedSliceUpdate?.(sliceIdx, ids.size);
+                }
+            }
+          });
       });
       
-      // Clear visual cache to force redraw
-      renderCacheRef.current.clear();
+      // Clear all visual caches to force redraw everywhere
+      renderCacheRef.current.forEach(map => map.clear());
       setRenderTick(t => t + 1);
     }
   }));
@@ -124,13 +149,17 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   // --- HELPER FUNCTIONS (Defined before usage) ---
 
   const getRenderCanvas = (sliceIdx: number, w: number, h: number, segments: Segment[]) => {
+      const caches = getSeriesCaches();
+      if (!caches) return null;
+      const { renderBySlice, maskBySlice } = caches;
+
       // 1. Check Visual Cache
-      if (renderCacheRef.current.has(sliceIdx)) {
-          return renderCacheRef.current.get(sliceIdx);
+      if (renderBySlice.has(sliceIdx)) {
+          return renderBySlice.get(sliceIdx);
       }
 
       // 2. Check Data Mask (ID Map)
-      const maskCanvas = maskCacheRef.current.get(sliceIdx);
+      const maskCanvas = maskBySlice.get(sliceIdx);
       if (!maskCanvas) return null;
 
       // 3. Rebuild Visual Cache from Data Mask
@@ -174,7 +203,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
       }
 
       rCtx.putImageData(renderData, 0, 0);
-      renderCacheRef.current.set(sliceIdx, renderCanvas);
+      renderBySlice.set(sliceIdx, renderCanvas);
       return renderCanvas;
   };
 
@@ -194,24 +223,32 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
       }
   };
 
-  const getActiveMaskCanvas = (width: number, height: number): HTMLCanvasElement => {
-     if (!maskCacheRef.current.has(sliceIndex)) {
+  const getActiveMaskCanvas = (width: number, height: number): HTMLCanvasElement | null => {
+     const caches = getSeriesCaches();
+     if (!caches) return null;
+     const { maskBySlice } = caches;
+     
+     if (!maskBySlice.has(sliceIndex)) {
         const c = document.createElement('canvas');
         c.width = width;
         c.height = height;
-        maskCacheRef.current.set(sliceIndex, c);
+        maskBySlice.set(sliceIndex, c);
      }
-     return maskCacheRef.current.get(sliceIndex)!;
+     return maskBySlice.get(sliceIndex)!;
   };
 
   const recomputeSliceSegments = (sliceIdx: number) => {
-    const existing = sliceSegmentIdsRef.current.get(sliceIdx);
+    const caches = getSeriesCaches();
+    if (!caches) return;
+    const { sliceIdsBySlice, maskBySlice } = caches;
+  
+    const existing = sliceIdsBySlice.get(sliceIdx);
     if (!existing || existing.size === 0) return;
   
-    const maskCanvas = maskCacheRef.current.get(sliceIdx);
+    const maskCanvas = maskBySlice.get(sliceIdx);
     if (!maskCanvas) {
       // No mask at all → clear set and badge
-      sliceSegmentIdsRef.current.set(sliceIdx, new Set());
+      sliceIdsBySlice.set(sliceIdx, new Set());
       onSegmentedSliceUpdate?.(sliceIdx, 0);
       return;
     }
@@ -235,7 +272,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   
     // Only update and notify if something actually changed
     if (remaining.size !== existing.size) {
-      sliceSegmentIdsRef.current.set(sliceIdx, remaining);
+      sliceIdsBySlice.set(sliceIdx, remaining);
       onSegmentedSliceUpdate?.(sliceIdx, remaining.size);
     }
   };
@@ -316,43 +353,88 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   useLayoutEffect(() => {
     if (!containerRef.current) return;
     
+    let animationFrameId: number;
     const resizeObserver = new ResizeObserver((entries) => {
-      if (!entries.length) return;
-      const entry = entries[0];
-      const { width, height } = entry.contentRect;
-      
-      // Ensure we have valid positive dimensions
-      if (width <= 0 || height <= 0) return;
+      animationFrameId = requestAnimationFrame(() => {
+        if (!entries.length) return;
+        const entry = entries[0];
+        const { width, height } = entry.contentRect;
 
-      const newW = Math.round(width);
-      const newH = Math.round(height);
+        // Ensure we have valid positive dimensions
+        if (width <= 0 || height <= 0) return;
 
-      // Avoid redundant updates if dimensions match strictly
-      if (lastSizeRef.current && lastSizeRef.current.width === newW && lastSizeRef.current.height === newH) {
-          return;
-      }
-      
-      lastSizeRef.current = { width: newW, height: newH };
-      setCanvasSize({ width: newW, height: newH });
+        const newW = Math.round(width);
+        const newH = Math.round(height);
+
+        setCanvasSize((prev) => {
+            // First time: just set size, no pan shift
+            if (!lastSizeRef.current) {
+                lastSizeRef.current = { width: newW, height: newH };
+                return { width: newW, height: newH };
+            }
+
+            const prevW = lastSizeRef.current.width;
+            const prevH = lastSizeRef.current.height;
+
+            if (prevW === newW && prevH === newH) {
+                return prev;
+            }
+
+            // Compute how much the center moved
+            const deltaX = (newW - prevW) / 2;
+            const deltaY = (newH - prevH) / 2;
+
+            // Shift pan so the same image area stays centered
+            setViewport((vp) => ({
+                ...vp,
+                pan: {
+                    x: vp.pan.x + deltaX,
+                    y: vp.pan.y + deltaY,
+                },
+            }));
+
+            lastSizeRef.current = { width: newW, height: newH };
+            return { width: newW, height: newH };
+        });
+      });
     });
 
     resizeObserver.observe(containerRef.current);
-    return () => resizeObserver.disconnect();
+    return () => {
+        resizeObserver.disconnect();
+        cancelAnimationFrame(animationFrameId);
+    };
   }, []);
+
+  // Update current series ID ref
+  useEffect(() => {
+      currentSeriesIdRef.current = series?.id || null;
+  }, [series?.id]);
 
   // 1. Reset Viewport on Series Change
   useEffect(() => {
     if (series) {
       setViewport(DEFAULT_VIEWPORT_STATE);
       setLoadError(null);
-      maskCacheRef.current.clear();
-      renderCacheRef.current.clear();
-      sliceSegmentIdsRef.current.clear(); // Clear segmentation tracking
-      setRenderTick(0);
+      // DO NOT clear segmentation caches here anymore. They persist per series.
       
-      // Clear image and reset fit flag for new series
+      setRenderTick(0);
       setCurrentImageBitmap(null);
       hasFittedRef.current = false;
+
+      // Restore segmentation UI state for this series
+      // Use setTimeout to skip one tick, allowing parent (App.tsx) to run its cleanup first
+      setTimeout(() => {
+        // Guard against series switch race condition
+        if (currentSeriesIdRef.current !== series.id) return;
+        
+        const caches = getSeriesCaches();
+        if (caches && caches.sliceIdsBySlice.size > 0) {
+            caches.sliceIdsBySlice.forEach((ids, idx) => {
+                onSegmentedSliceUpdate?.(idx, ids.size);
+            });
+        }
+      }, 0);
     }
   }, [series?.id]);
 
@@ -384,7 +466,8 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
   // 2. Invalidate Render Cache when Segment Definitions Change
   useEffect(() => {
-    renderCacheRef.current.clear();
+    // Clear all visual caches globally since segment definitions (colors) are global
+    renderCacheRef.current.forEach(map => map.clear());
     setRenderTick(t => t + 1);
   }, [segmentationLayer.segments]);
 
@@ -508,6 +591,8 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      const h = currentImageBitmap.height || 512;
      
      const maskCanvas = getActiveMaskCanvas(w, h);
+     if (!maskCanvas) return;
+     
      const ctxMask = maskCanvas.getContext('2d');
      if (!ctxMask) return;
      
@@ -521,15 +606,19 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
      // Update Segmentation Tracking (Intent-based, not pixel-based)
      if (!isEraser && segId) {
-         let sliceSets = sliceSegmentIdsRef.current.get(sliceIndex);
-         if (!sliceSets) {
-             sliceSets = new Set();
-             sliceSegmentIdsRef.current.set(sliceIndex, sliceSets);
-         }
-         
-         if (!sliceSets.has(segId)) {
-             sliceSets.add(segId);
-             onSegmentedSliceUpdate?.(sliceIndex, sliceSets.size);
+         const caches = getSeriesCaches();
+         if (caches) {
+             const { sliceIdsBySlice } = caches;
+             let sliceSets = sliceIdsBySlice.get(sliceIndex);
+             if (!sliceSets) {
+                 sliceSets = new Set();
+                 sliceIdsBySlice.set(sliceIndex, sliceSets);
+             }
+             
+             if (!sliceSets.has(segId)) {
+                 sliceSets.add(segId);
+                 onSegmentedSliceUpdate?.(sliceIndex, sliceSets.size);
+             }
          }
      }
 
