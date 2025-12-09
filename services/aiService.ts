@@ -272,15 +272,15 @@ export const streamChatResponse = async (
     if (mode === 'deep_think') {
         systemContext += "You are in DEEP THINK mode. Consider the question carefully, but still present only a concise explanation and structured Markdown sections.\n\n";
     } else if (mode === 'search') {
-        systemContext += "You are in WEB SEARCH mode. Use external search tools when helpful and respond with short, citation-style bullet lists.\n\n";
+        systemContext += "You are in WEB SEARCH mode. You may use Google Search to pull short, relevant teaching facts or guideline snippets about MRI sequences and anatomy. Keep responses brief and educational.\n\n";
     } else {
         systemContext += "You are in STANDARD mode. Give a concise, clinically oriented explanation.\n\n";
     }
 
     if (!hasCapturedImage) {
-        systemContext += "Important: There is currently no captured image attached to this request. If the user asks about 'this image' or 'this slice', explicitly say you cannot see any image yet and ask them to capture a slice with the camera button below.";
+        systemContext += "Important: There is currently no captured image attached to this request. If the user asks about 'this image' or 'this slice', explicitly say you cannot see any image yet and ask them to capture a slice with the camera button below. Do not hallucinate an image description.\n";
     } else {
-        systemContext += "Important: There is exactly one captured MRI slice attached to this request. If the user refers to 'this image' or 'this slice', interpret that as this captured slice and describe it based on the image.";
+        systemContext += "Important: There is exactly one captured MRI slice attached to this request. If the user refers to 'this image' or 'this slice', interpret that as this captured slice and describe it based on the image.\n";
     }
 
     // --- PARTS CONSTRUCTION ---
