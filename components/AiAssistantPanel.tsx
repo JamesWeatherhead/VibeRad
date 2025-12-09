@@ -100,6 +100,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   const [isThinking, setIsThinking] = useState(false);
   const [mode, setMode] = useState<AiMode>('chat');
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const activeRequestRef = useRef(false);
   
   // Aliases for lifted state
   const attachedScreenshot = capturedImage;
@@ -169,6 +170,12 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   };
 
   const handleClearChat = () => {
+    // Abort active request if clearing
+    if (activeRequestRef.current) {
+      activeRequestRef.current = false;
+      setIsThinking(false);
+    }
+
     setMessages([{ 
       id: 'welcome', 
       role: 'model', 
@@ -179,6 +186,20 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
     setInput('');
     setDynamicSuggestionsMap(null);
     setIsPinnedToBottom(true);
+  };
+
+  const handleCancel = () => {
+    activeRequestRef.current = false;
+    setIsThinking(false);
+    
+    // Remove the placeholder message (the one with empty text)
+    setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === 'model' && !last.text) {
+            return prev.slice(0, -1);
+        }
+        return prev;
+    });
   };
 
   const handleSendMessage = async (text: string = input, promptOverride?: string) => {
@@ -198,6 +219,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
     // Clear Input immediately for responsiveness, but we might restore it on error.
     if (!promptOverride) setInput('');
     setIsThinking(true);
+    activeRequestRef.current = true;
     
     const imageToSend = attachedScreenshot;
     let promptToSend = finalText;
@@ -223,7 +245,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
        };
     }
 
-    // 2. Add "Thinking" Placeholder
+    // 2. Add "Thinking" Placeholder (Initially empty text triggers thinking bubble)
     setMessages(prev => [...prev, { 
         id: botMsgId, 
         role: 'model', 
@@ -240,6 +262,9 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             learnerLevel, // Pass level to chat context
             imageToSend, 
             (chunk, sources, toolCalls, suggestionsPayload, fullTextReplace) => {
+                // Cancellation Check
+                if (!activeRequestRef.current) return;
+
                 if (toolCalls && onJumpToSlice) {
                     toolCalls.forEach(call => {
                         if (call.name === 'set_cursor_frame') {
@@ -268,6 +293,9 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             }
         );
     } catch (error: any) {
+        // If cancelled, do not render error
+        if (!activeRequestRef.current) return;
+
         // ERROR HANDLING
         console.error("Chat Error Caught in Component:", error);
 
@@ -289,7 +317,10 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
         setMessages(prev => [...prev, errorMessage]);
         setIsPinnedToBottom(true);
     } finally {
-        setIsThinking(false);
+        if (activeRequestRef.current) {
+            setIsThinking(false);
+            activeRequestRef.current = false;
+        }
     }
   };
 
@@ -378,32 +409,59 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             >
                 {messages.map((m) => {
                     if (m.role === 'error') {
-                    return (
-                        <div key={m.id} className="flex flex-col items-center animate-in fade-in slide-in-from-bottom-2">
-                            <div className="max-w-[90%] w-full bg-red-950/40 border border-red-500/30 rounded-xl p-3 flex items-start gap-3 shadow-lg">
-                                <div className="mt-0.5 p-1 bg-red-500/10 rounded-full">
-                                    <AlertTriangle className="w-4 h-4 text-red-400" />
-                                </div>
-                                <div className="flex-1">
-                                    <div className="text-xs font-bold text-red-300 mb-1">Gemini Request Failed</div>
-                                    <div className="text-xs text-red-200/80 leading-relaxed mb-2">
-                                        {m.text}
+                        return (
+                            <div key={m.id} className="flex flex-col items-center animate-in fade-in slide-in-from-bottom-2">
+                                <div className="max-w-[90%] w-full bg-red-950/40 border border-red-500/30 rounded-xl p-3 flex items-start gap-3 shadow-lg">
+                                    <div className="mt-0.5 p-1 bg-red-500/10 rounded-full">
+                                        <AlertTriangle className="w-4 h-4 text-red-400" />
                                     </div>
-                                    <div className="text-[10px] text-red-400/60 mb-2">
-                                        Your question has been preserved above.
+                                    <div className="flex-1">
+                                        <div className="text-xs font-bold text-red-300 mb-1">Gemini Request Failed</div>
+                                        <div className="text-xs text-red-200/80 leading-relaxed mb-2">
+                                            {m.text}
+                                        </div>
+                                        <div className="text-[10px] text-red-400/60 mb-2">
+                                            Your question has been preserved above.
+                                        </div>
+                                        {m.originalPrompt && (
+                                            <button 
+                                                onClick={() => handleSendMessage(m.originalPrompt)}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs rounded-md border border-red-500/20 transition-colors"
+                                            >
+                                                <RotateCcw className="w-3 h-3" /> Retry Request
+                                            </button>
+                                        )}
                                     </div>
-                                    {m.originalPrompt && (
-                                        <button 
-                                            onClick={() => handleSendMessage(m.originalPrompt)}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs rounded-md border border-red-500/20 transition-colors"
-                                        >
-                                            <RotateCcw className="w-3 h-3" /> Retry Request
-                                        </button>
-                                    )}
                                 </div>
                             </div>
-                        </div>
-                    );
+                        );
+                    }
+
+                    // THINKING BUBBLE (Render if role=model and text is empty)
+                    if (m.role === 'model' && !m.text) {
+                        return (
+                            <div key={m.id} className="flex flex-col items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                <div className="relative max-w-[85%] rounded-2xl rounded-tl-sm p-[1px] bg-gradient-to-br from-purple-500/30 via-indigo-500/30 to-slate-700/30 shadow-lg shadow-purple-900/10">
+                                   <div className="bg-slate-900/95 backdrop-blur-xl rounded-[15px] rounded-tl-sm p-4 flex flex-col gap-3">
+                                       {/* Header */}
+                                       <div className="flex items-center gap-2 text-purple-300 text-xs font-bold uppercase tracking-wider">
+                                            <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+                                            <span>Analyzing Slice</span>
+                                        </div>
+                                        
+                                        {/* Content */}
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex space-x-1">
+                                                <div className="w-2 h-2 bg-purple-500 rounded-full animate-[bounce_1s_infinite_-0.3s]"></div>
+                                                <div className="w-2 h-2 bg-indigo-500 rounded-full animate-[bounce_1s_infinite_-0.15s]"></div>
+                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-[bounce_1s_infinite]"></div>
+                                            </div>
+                                            <span className="text-xs text-slate-400 font-medium">Processing visual context...</span>
+                                        </div>
+                                   </div>
+                                </div>
+                            </div>
+                        );
                     }
 
                     return (
@@ -436,7 +494,6 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
                                 </div>
                             )}
                             
-                            {m.isThinking && !m.text && <div className="text-xs text-slate-400 italic mb-1"><BrainCircuit className="w-3 h-3 animate-pulse inline mr-1"/> Thinking...</div>}
                             <MarkdownText content={m.text} />
                             {m.sources && m.sources.length > 0 && (
                                 <div className="mt-3 pt-2 border-t border-white/10">
@@ -584,17 +641,38 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
                 </div>
             </div>
 
-            {/* Dynamic Hint */}
-            <div className="mt-2 text-[11px] text-slate-400 leading-tight">
-                {!hasCapturedImage ? (
-                    <span>No image attached. Click the camera to capture the current slice before asking image questions.</span>
+            {/* Dynamic Status / Hint Footer */}
+            <div className="mt-2 text-[11px] text-slate-400 leading-tight min-h-[20px] flex items-center justify-between">
+                {isThinking ? (
+                    <div className="w-full flex items-center justify-between bg-purple-900/10 border border-purple-500/20 rounded-lg px-3 py-2 animate-in fade-in">
+                        <div className="flex items-center gap-2.5">
+                            <div className="relative flex h-2.5 w-2.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500"></span>
+                            </div>
+                            <span className="text-purple-200 font-medium">Gemini is thinking... <span className="text-purple-400/70 text-[10px] ml-1">(~10s)</span></span>
+                        </div>
+                        <button 
+                            onClick={handleCancel}
+                            className="flex items-center gap-1.5 px-2 py-1 hover:bg-white/5 rounded text-slate-400 hover:text-white transition-colors"
+                        >
+                            <span className="text-[10px] font-bold uppercase tracking-wider">Cancel</span>
+                            <X className="w-3 h-3" />
+                        </button>
+                    </div>
                 ) : (
-                    <span>
-                        Using last captured slice: <span className="text-slate-200 font-mono">{capturedSliceInfo?.slice}</span>
-                        {capturedSliceInfo?.total && <span className="text-slate-500"> / {capturedSliceInfo.total}</span>}
-                        {<span className="text-slate-400"> ({capturedSliceInfo?.label || "MRI series"})</span>}
-                        . Click the camera again to update.
-                    </span>
+                    <div className="w-full">
+                         {!hasCapturedImage ? (
+                            <span>No image attached. Click the camera to capture the current slice before asking image questions.</span>
+                        ) : (
+                            <span>
+                                Using last captured slice: <span className="text-slate-200 font-mono">{capturedSliceInfo?.slice}</span>
+                                {capturedSliceInfo?.total && <span className="text-slate-500"> / {capturedSliceInfo.total}</span>}
+                                {<span className="text-slate-400"> ({capturedSliceInfo?.label || "MRI series"})</span>}
+                                . Click the camera again to update.
+                            </span>
+                        )}
+                    </div>
                 )}
             </div>
         </div>
