@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, MessageSquarePlus } from 'lucide-react';
 import { streamChatResponse } from '../services/aiService';
@@ -34,7 +33,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
 
   useEffect(() => {
     if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-  }, [messages]);
+  }, [messages, isThinking]);
 
   const handleCapture = () => {
     if (onCaptureScreen) {
@@ -122,22 +121,22 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
                     </div>
                 </div>
             ))}
-        </div>
 
-        {!isThinking && (
-            <div className="px-4 pb-4 flex flex-col gap-2 flex-shrink-0 border-t border-transparent">
-                <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase">
-                     <span className="flex items-center gap-1"><MessageSquarePlus className="w-3 h-3" /> Suggested Follow-ups</span>
+            {!isThinking && (
+                <div className="pt-2 flex flex-col gap-2 pb-2 animate-in fade-in duration-300">
+                    <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase">
+                         <MessageSquarePlus className="w-3 h-3" /> Suggested Follow-ups
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {SUGGESTED_FOLLOWUPS.map((sugg, idx) => (
+                            <button key={idx} onClick={() => handleSendMessage(sugg)} className="text-left text-xs bg-slate-800 hover:bg-slate-700 text-indigo-200 px-3 py-1.5 rounded-full border border-slate-700 transition-all">
+                                {sugg}
+                            </button>
+                        ))}
+                    </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    {SUGGESTED_FOLLOWUPS.map((sugg, idx) => (
-                        <button key={idx} onClick={() => handleSendMessage(sugg)} className="text-left text-xs bg-slate-800 hover:bg-slate-700 text-indigo-200 px-3 py-1.5 rounded-full border border-slate-700 transition-all">
-                            {sugg}
-                        </button>
-                    ))}
-                </div>
-            </div>
-        )}
+            )}
+        </div>
 
         <div className="p-4 bg-slate-900 border-t border-slate-800 flex-shrink-0">
             {/* Mode Selection */}
