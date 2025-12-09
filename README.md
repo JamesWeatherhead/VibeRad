@@ -35,6 +35,22 @@ Unlike static chat interfaces, VibeRad is a fully functional DICOMweb viewer bui
 - **Segmentation:** Paint brush tools for anatomical highlighting.
 - **Connectivity:** Connects read-only to public DICOMweb endpoints (for example, the Orthanc demo server).
 
+## Suggested demo flow
+
+This walkthrough is the quickest way to see the app in action using the provided demo data.
+
+**3 Steps: (1) Pick a series, (2) capture a slice with the camera, (3) ask VibeRad to teach you what you are seeing.**
+
+1.  **Start VibeRad**: Launch the app and acknowledge the safety disclaimer (Educational Use Only).
+2.  **Step 1 – Pick a series**: Select a brain MRI study. In the bottom "Series browser," select a distinct sequence (e.g., T1/SE/extrp or T2 FLAIR) to load it.
+3.  **Step 2 – Capture a slice**: Scroll to an anatomical slice of interest. Click the **Camera 📸** button next to the chat input. Note that a thumbnail of the slice appears, indicating Gemini 3 Pro (preview) can now "see" this specific view.
+4.  **Step 3 – Ask VibeRad**: Ensure the mode is set to **Chat** (Low Thinking) and the Teaching Level (bottom right) is set to **Med**. Ask: "What am I looking at on this slice?" or click a suggestion. The AI will describe the anatomy visible in your captured image.
+5.  **Deep Think Mode**: Switch the mode to **Deep Think** (High Thinking). Click one of the suggested follow-up chips (e.g., "Key structures" or "Step-by-step"). Gemini 3 Pro will reason more deeply to generate a structured, Markdown-formatted teaching explanation.
+6.  **Adjust Learner Level**: Change the Teaching Level from **Med** to **HS** (High School) or **Resident**. Notice how the "Suggested Follow-ups" immediately update to match the new complexity level while maintaining context of the same captured slice.
+7.  **Search Mode (Optional)**: Switch to **Search** mode. Ask a question like "What do guidelines say about reporting this anatomy?" Gemini will use Google Search grounding to provide a concise answer with cited links.
+
+*All AI interactions run on `gemini-3-pro-preview`. The camera capture is required for multimodal reasoning to ensure the AI analyzes the exact pixel data you are viewing.*
+
 ## Tech Stack & Implementation
 
 - **Framework:** React 19.2.1 + TypeScript + Tailwind CSS
