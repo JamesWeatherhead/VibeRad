@@ -35,8 +35,14 @@ const App: React.FC = () => {
   const viewerRef = useRef<ViewerHandle>(null);
   
   const [sliceIndex, setSliceIndex] = useState(0);
-  const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  
+  // Measurements State (Scoped by Series ID)
+  const [measurementsBySeries, setMeasurementsBySeries] = useState<Record<string, Measurement[]>>({});
   const [activeMeasurementId, setActiveMeasurementId] = useState<string | null>(null);
+
+  // Derived Measurements for Active Series
+  const activeSeriesId = activeSeries?.id;
+  const measurements = activeSeriesId ? (measurementsBySeries[activeSeriesId] || []) : [];
 
   // Default to AI tab
   const [activeRightTab, setActiveRightTab] = useState<'measure' | 'segment' | 'ai'>('ai');
@@ -284,7 +290,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (activeSeries) {
       setSliceIndex(Math.floor(activeSeries.instanceCount / 2));
-      setMeasurements([]);
+      // Measurements are now persisted by series, so we don't clear them here.
       setActiveMeasurementId(null);
       // Reset capture context on series change to avoid stale context
       setAiContextImage(null);
@@ -296,18 +302,30 @@ const App: React.FC = () => {
   }, [activeSeries?.id]);
 
   const handleMeasurementAdd = (m: Measurement) => {
-    setMeasurements(prev => [...prev, m]);
+    if (!activeSeriesId) return;
+    setMeasurementsBySeries(prev => ({
+        ...prev,
+        [activeSeriesId]: [...(prev[activeSeriesId] || []), m]
+    }));
     setActiveMeasurementId(m.id);
     setActiveTool(ToolMode.POINTER); 
     setActiveRightTab('measure'); 
   };
 
   const handleMeasurementUpdate = (id: string, updates: Partial<Measurement>) => {
-    setMeasurements(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+    if (!activeSeriesId) return;
+    setMeasurementsBySeries(prev => ({
+        ...prev,
+        [activeSeriesId]: (prev[activeSeriesId] || []).map(m => m.id === id ? { ...m, ...updates } : m)
+    }));
   };
 
   const handleMeasurementDelete = (id: string) => {
-    setMeasurements(prev => prev.filter(m => m.id !== id));
+    if (!activeSeriesId) return;
+    setMeasurementsBySeries(prev => ({
+        ...prev,
+        [activeSeriesId]: (prev[activeSeriesId] || []).filter(m => m.id !== id)
+    }));
     if (activeMeasurementId === id) setActiveMeasurementId(null);
   };
   
