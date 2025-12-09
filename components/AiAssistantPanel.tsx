@@ -21,32 +21,55 @@ interface AiAssistantPanelProps {
   };
 }
 
+const STATIC_SUGGESTIONS_NO_IMAGE: Record<LearnerLevel, string[]> = {
+  highschool: [
+    "What is MRI?",
+    "Is MRI safe?",
+  ],
+  undergrad: [
+    "Give me a simple intro to MRI physics.",
+    "Review basic brain anatomy with me.",
+  ],
+  medstudent: [
+    "How should I start learning to read brain MRI?",
+    "What normal brain structures should I be able to recognize on every scan?",
+  ],
+  resident: [
+    "How should I systematically approach brain MRI on call?",
+    "What are common pitfalls when reading brain MRI?",
+  ],
+};
+
+const STATIC_SUGGESTIONS_WITH_IMAGE: Record<LearnerLevel, string[]> = {
+  highschool: [
+    "Explain this image in very simple terms.",
+    "What body part is this?",
+  ],
+  undergrad: [
+    "Give me the big picture of this slice.",
+    "Point out the key structures I should recognize.",
+  ],
+  medstudent: [
+    "Walk me step by step through this slice.",
+    "Ask me a few quiz questions about what I should notice here.",
+    "Explain the main anatomical relationships on this slice.",
+  ],
+  resident: [
+    "Give me pearls and pitfalls for interpreting this slice.",
+    "How does this sequence differ from FLAIR for visualizing the same region?",
+    "What artifacts or technical issues should I watch out for on this sequence?",
+  ],
+};
+
 // Initial static suggestions for "Zero State" only
 function getInitialSuggestions(
   learnerLevel: LearnerLevel,
   hasImageContext: boolean
 ): string[] {
-  if (learnerLevel === 'highschool') {
-    return hasImageContext 
-      ? ["Explain simply", "What body part is this?"] 
-      : ["What is MRI?", "Is MRI safe?"];
+  if (hasImageContext) {
+    return STATIC_SUGGESTIONS_WITH_IMAGE[learnerLevel] || [];
   }
-  if (learnerLevel === 'undergrad') {
-    return hasImageContext
-      ? ["Big picture", "Key structures"]
-      : ["MRI Physics intro", "Anatomy basics"];
-  }
-  if (learnerLevel === 'medstudent') {
-    return hasImageContext
-      ? ["Step-by-step", "Self-test", "Anatomical relations"]
-      : ["Search patterns", "Sequence guide"];
-  }
-  if (learnerLevel === 'resident') {
-     return hasImageContext
-      ? ["Pearls & pitfalls", "Compare sequences", "Guideline check"]
-      : ["Reporting templates", "Advanced physics artifacts"];
-  }
-  return [];
+  return STATIC_SUGGESTIONS_NO_IMAGE[learnerLevel] || [];
 }
 
 const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ 
