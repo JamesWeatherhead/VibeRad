@@ -254,6 +254,7 @@ export const streamChatResponse = async (
 ) => {
   try {
     const currentConfig = MODE_CONFIG[mode];
+    const hasCapturedImage = !!imageBase64;
     
     // Tools logic:
     // Chat & Deep Think = No tools.
@@ -264,23 +265,43 @@ export const streamChatResponse = async (
       tools = [{ googleSearch: {} }];
     }
 
-    let contents: any = message;
+    // --- CONTEXT CONSTRUCTION ---
+    // We build a specific text context that enforces the image safety rules strictly.
+    let systemContext = "You are VibeRad, a radiology teaching assistant. You can optionally see one MRI slice if the user has captured it. Explain in simple language for a medical student. Do not provide diagnoses or treatment.\n\n";
 
-    // Construct Payload with optional image and specific media resolution
-    if (imageBase64) {
-      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-      const imagePart: any = {
-        inlineData: { mimeType: 'image/jpeg', data: cleanBase64 }
-        // mediaResolution removed due to API incompatibility
-      };
-
-      contents = {
-        parts: [
-          imagePart,
-          { text: message }
-        ]
-      };
+    if (mode === 'deep_think') {
+        systemContext += "You are in DEEP THINK mode. Consider the question carefully, but still present only a concise explanation and structured Markdown sections.\n\n";
+    } else if (mode === 'search') {
+        systemContext += "You are in WEB SEARCH mode. Use external search tools when helpful and respond with short, citation-style bullet lists.\n\n";
+    } else {
+        systemContext += "You are in STANDARD mode. Give a concise, clinically oriented explanation.\n\n";
     }
+
+    if (!hasCapturedImage) {
+        systemContext += "Important: There is currently no captured image attached to this request. If the user asks about 'this image' or 'this slice', explicitly say you cannot see any image yet and ask them to capture a slice with the camera button below.";
+    } else {
+        systemContext += "Important: There is exactly one captured MRI slice attached to this request. If the user refers to 'this image' or 'this slice', interpret that as this captured slice and describe it based on the image.";
+    }
+
+    // --- PARTS CONSTRUCTION ---
+    const parts: any[] = [];
+    
+    // 1. Text Context
+    parts.push({ text: systemContext });
+
+    // 2. Image (if present)
+    if (hasCapturedImage && imageBase64) {
+      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+      parts.push({
+        inlineData: { mimeType: 'image/jpeg', data: cleanBase64 }
+      });
+    }
+
+    // 3. User Question
+    parts.push({ text: message });
+
+    // --- API CALL ---
+    const contents = { parts };
 
     const responseStream = await ai.models.generateContentStream({
       model: currentConfig.model,

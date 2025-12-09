@@ -66,23 +66,16 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
     setInput('');
     setIsThinking(true);
     
+    // Persistent Capture State: We use the attachedScreenshot if available, and we DO NOT clear it.
+    // This allows the user to ask follow-up questions about the same image.
     const imageToSend = attachedScreenshot;
-    setAttachedScreenshot(null);
-
-    let modePrefix = "You are in STANDARD mode. Give a concise, clinically oriented explanation using the Markdown rules above.\n\n";
-    if (mode === 'deep_think') {
-         modePrefix = "You are in DEEP THINK mode. Consider the question carefully, but still present only a concise explanation and structured Markdown sections. Do not show long step-by-step reasoning.\n\n";
-    } else if (mode === 'search') {
-         modePrefix = "You are in WEB SEARCH mode. Use external search tools when helpful and respond with short, citation-style bullet lists under headings like \"## Guideline Snippets\" and \"## Evidence Summary\", following the Markdown rules above.\n\n";
-    }
 
     let promptToSend = userMsg.text;
+    
+    // Inject Study Context only for Search Mode (Deep Think & Chat rely on image + prompt)
     if (mode === 'search' && studyMetadata) {
-        promptToSend = `${modePrefix}Context: Patient Scan (${studyMetadata.modality}, ${studyMetadata.description})`;
+        promptToSend += `\n\nContext: Patient Scan (${studyMetadata.modality}, ${studyMetadata.description})`;
         if (cursor) promptToSend += ` (Slice: ${cursor.frameIndex + 1})`;
-        promptToSend += `. Question: ${userMsg.text}`;
-    } else {
-        promptToSend = `${modePrefix}${userMsg.text}`;
     }
 
     const botMsgId = (Date.now() + 1).toString();
@@ -152,7 +145,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
             {messages.map((m) => (
                 <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                     <div className={`max-w-[95%] rounded-xl p-3 shadow-sm ${m.role === 'user' ? 'bg-gradient-to-br from-purple-900/40 to-indigo-900/40 text-purple-100 border border-purple-700/50' : 'bg-slate-800/80 text-slate-200 border border-slate-700'}`}>
-                        {m.hasAttachment && <div className="mb-2 text-xs text-purple-300 bg-purple-950/50 px-2 py-1 rounded w-fit flex gap-1"><ImageIcon className="w-3 h-3"/> Image Attached</div>}
+                        {m.hasAttachment && <div className="mb-2 text-xs text-purple-300 bg-purple-950/50 px-2 py-1 rounded w-fit flex gap-1"><ImageIcon className="w-3 h-3"/> Image Context Active</div>}
                         {m.isThinking && !m.text && <div className="text-xs text-slate-400 italic mb-1"><BrainCircuit className="w-3 h-3 animate-pulse inline mr-1"/> Thinking...</div>}
                         <MarkdownText content={m.text} />
                         {m.sources && m.sources.length > 0 && (
@@ -212,6 +205,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
                 <div className="relative inline-block border border-purple-500 rounded overflow-hidden shadow-lg group mb-3">
                     <img src={attachedScreenshot} alt="Snapshot" className="h-16 w-auto opacity-80 group-hover:opacity-100 transition-opacity" />
                     <button onClick={() => setAttachedScreenshot(null)} className="absolute top-0 right-0 bg-black/50 hover:bg-red-500 text-white p-0.5"><X className="w-3 h-3" /></button>
+                    <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[9px] text-white px-1 text-center">Context Active</div>
                 </div>
             )}
 
@@ -220,8 +214,8 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
                 <button 
                     onClick={handleCapture} 
                     disabled={!onCaptureScreen} 
-                    title="Attach the current slice so Gemini can see this image"
-                    aria-label="Attach the current slice so Gemini can see this image"
+                    title="Capture current slice as context"
+                    aria-label="Capture current slice as context"
                     className={`p-2.5 rounded-lg border transition-all ${attachedScreenshot ? 'bg-purple-900 border-purple-500 text-white ring-2 ring-purple-500/50' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'}`}
                 >
                     <Camera className="w-5 h-5" />
