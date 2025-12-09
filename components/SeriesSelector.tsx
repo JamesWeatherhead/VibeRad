@@ -146,7 +146,12 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({ seriesList, activeSerie
   if (seriesList.length === 0) return null;
 
   return (
-    <div className="bg-black border-t border-gray-800 flex flex-col">
+    <div 
+      className="bg-black border-t border-gray-800 flex flex-col"
+      id="tour-series-rail" // tour anchor
+      data-tour-id="series-rail"
+      aria-label="Series selection rail"
+    >
        <div className="px-3 py-2 bg-slate-900/80 border-b border-slate-800 backdrop-blur-sm z-10">
            <span className="text-xs text-slate-300 block leading-tight">
              <strong className="text-slate-200">Series browser</strong> · Different MRI “looks” of the same brain. Hover a tile to see what that view is good for.

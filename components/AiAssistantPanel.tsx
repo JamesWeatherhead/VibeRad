@@ -1,12 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, Trash2, CheckCircle2, AlertTriangle, RotateCcw, ArrowDown } from 'lucide-react';
-import { streamChatResponse, AiMode, generateFollowUpQuestions } from '../services/aiService';
+import { streamChatResponse, AiMode } from '../services/aiService';
 import { ChatMessage, CursorContext } from '../types';
 import { MarkdownText } from '../utils/markdownUtils';
 import { LearnerLevel, LEARNER_LEVELS } from '../constants';
 
 interface AiAssistantPanelProps {
-  onCaptureScreen?: () => string | null;
+  // Capture props lifted to parent
+  capturedImage: string | null;
+  capturedSliceMetadata: { slice: number; total?: number; label?: string } | null;
+  onCaptureTrigger: () => void;
+  onClearCapture: () => void;
+  showCaptureToast: boolean;
+
   studyMetadata?: {
     studyId: string;
     patientName: string;
@@ -73,7 +79,11 @@ function getInitialSuggestions(
 }
 
 const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ 
-  onCaptureScreen, 
+  capturedImage,
+  capturedSliceMetadata,
+  onCaptureTrigger,
+  onClearCapture,
+  showCaptureToast,
   studyMetadata, 
   cursor, 
   onJumpToSlice, 
@@ -90,15 +100,10 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   const [isThinking, setIsThinking] = useState(false);
   const [mode, setMode] = useState<AiMode>('chat');
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const [attachedScreenshot, setAttachedScreenshot] = useState<string | null>(null);
   
-  const [capturedSliceInfo, setCapturedSliceInfo] = useState<{
-    slice: number;
-    total?: number;
-    label?: string;
-  } | null>(null);
-  
-  const [showCaptureToast, setShowCaptureToast] = useState(false);
+  // Aliases for lifted state
+  const attachedScreenshot = capturedImage;
+  const capturedSliceInfo = capturedSliceMetadata;
   
   // Scroll State
   const [isUserNearBottom, setIsUserNearBottom] = useState(true);
@@ -115,6 +120,13 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   useEffect(() => {
     localStorage.setItem('viberad_learner_level', learnerLevel);
   }, [learnerLevel]);
+
+  // Clear dynamic suggestions when the captured context changes
+  useEffect(() => {
+    if (capturedImage) {
+       setDynamicSuggestionsMap(null);
+    }
+  }, [capturedImage]);
 
   // Smart Auto-Scroll Effect
   useEffect(() => {
@@ -153,24 +165,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
       : getInitialSuggestions(learnerLevel, !!attachedScreenshot);
 
   const handleCapture = () => {
-    if (onCaptureScreen) {
-        const screenshot = onCaptureScreen();
-        if (screenshot) {
-            setAttachedScreenshot(screenshot);
-            if (cursor) {
-                setCapturedSliceInfo({ 
-                  slice: cursor.frameIndex + 1,
-                  total: activeSeriesInfo?.instanceCount,
-                  label: activeSeriesInfo?.description || studyMetadata?.description 
-                });
-            }
-            setShowCaptureToast(true);
-            setTimeout(() => setShowCaptureToast(false), 4000);
-            
-            // Clear old suggestions when context changes drastically
-            setDynamicSuggestionsMap(null); 
-        }
-    }
+      onCaptureTrigger();
   };
 
   const handleClearChat = () => {
@@ -179,10 +174,9 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
       role: 'model', 
       text: "This is anonymized demo imaging from a public DICOM server. I’m a radiology teaching assistant: I can explain anatomy, help you describe what you see, and surface guideline snippets for learning — never real diagnoses, reports, or treatment decisions."
     }]);
-    setAttachedScreenshot(null);
-    setCapturedSliceInfo(null);
+    
+    onClearCapture();
     setInput('');
-    setShowCaptureToast(false);
     setDynamicSuggestionsMap(null);
     setIsPinnedToBottom(true);
   };
@@ -525,7 +519,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             {attachedScreenshot && (
                 <div className="relative inline-block border border-purple-500 rounded overflow-hidden shadow-lg group mb-3">
                     <img src={attachedScreenshot} alt="Snapshot" className="h-16 w-auto opacity-80 group-hover:opacity-100 transition-opacity" />
-                    <button onClick={() => { setAttachedScreenshot(null); setCapturedSliceInfo(null); setDynamicSuggestionsMap(null); }} className="absolute top-0 right-0 bg-black/50 hover:bg-red-500 text-white p-0.5"><X className="w-3 h-3" /></button>
+                    <button onClick={() => { onClearCapture(); setDynamicSuggestionsMap(null); }} className="absolute top-0 right-0 bg-black/50 hover:bg-red-500 text-white p-0.5"><X className="w-3 h-3" /></button>
                     <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[9px] text-white px-1 text-center truncate">
                         {capturedSliceInfo ? `Slice ${capturedSliceInfo.slice}` : 'Captured'}
                     </div>
@@ -559,7 +553,6 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
                 <div className="relative group">
                     <button 
                         onClick={handleCapture} 
-                        disabled={!onCaptureScreen} 
                         title="Capture the current MRI slice so Gemini 3 can see it."
                         aria-label="Capture current slice as context"
                         className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all ${

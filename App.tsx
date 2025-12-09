@@ -6,10 +6,11 @@ import MeasurementPanel from './components/MeasurementPanel';
 import SegmentationPanel from './components/SegmentationPanel';
 import AiAssistantPanel from './components/AiAssistantPanel';
 import SafetyModal from './components/SafetyModal';
+import GuidedTour from './components/GuidedTour';
 import { TOOLS, MOCK_SEGMENTATION_DATA } from './constants';
 import { Study, Series, ToolMode, ConnectionType, DicomWebConfig, Measurement, SegmentationLayer, ViewerHandle } from './types';
 import { fetchDicomWebSeries, searchDicomWebStudies } from './services/dicomService';
-import { Ruler, Activity, Sparkles, GripVertical, Shield, Loader2, X } from 'lucide-react';
+import { Ruler, Activity, Sparkles, GripVertical, Shield, Loader2, X, Camera, HelpCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   // connectionType defaults to DICOMWEB to skip intro
@@ -49,20 +50,8 @@ const App: React.FC = () => {
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   
-  // Onboarding State
-  const [showOnboarding, setShowOnboarding] = useState(false);
-
-  useEffect(() => {
-    const dismissed = localStorage.getItem("viberad_onboarding_dismissed");
-    if (!dismissed) {
-      setShowOnboarding(true);
-    }
-  }, []);
-
-  const dismissOnboarding = () => {
-    localStorage.setItem("viberad_onboarding_dismissed", "true");
-    setShowOnboarding(false);
-  };
+  // Tour State
+  const [isTourOpen, setIsTourOpen] = useState(false);
 
   // Robust Auto-boot logic
   useEffect(() => {
@@ -121,6 +110,34 @@ const App: React.FC = () => {
     const timer = setTimeout(autoBoot, 100);
     return () => clearTimeout(timer);
   }, []);
+
+  // Guided Tour Logic
+  useEffect(() => {
+    // Only check if we are actually viewing a study (not on study list)
+    if (selectedStudy) {
+      const tourCompleted = localStorage.getItem('viberad.guidedTour.completed');
+      if (!tourCompleted) {
+        // Small delay to ensure DOM is ready
+        const timer = setTimeout(() => setIsTourOpen(true), 1500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [selectedStudy]);
+
+  const handleCloseTour = () => {
+    setIsTourOpen(false);
+    localStorage.setItem('viberad.guidedTour.completed', 'true');
+  };
+
+  const handleRestartTour = () => {
+    localStorage.removeItem('viberad.guidedTour.completed');
+    setIsTourOpen(true);
+  };
+
+  // Global AI Capture State (Lifted)
+  const [aiContextImage, setAiContextImage] = useState<string | null>(null);
+  const [aiContextSliceInfo, setAiContextSliceInfo] = useState<{slice: number; total?: number; label?: string} | null>(null);
+  const [showCaptureToast, setShowCaptureToast] = useState(false);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -181,6 +198,9 @@ const App: React.FC = () => {
       setSliceIndex(Math.floor(activeSeries.instanceCount / 2));
       setMeasurements([]);
       setActiveMeasurementId(null);
+      // Reset capture context on series change to avoid stale context
+      setAiContextImage(null);
+      setAiContextSliceInfo(null);
     }
   }, [activeSeries?.id]);
 
@@ -204,6 +224,25 @@ const App: React.FC = () => {
       return viewerRef.current?.captureScreenshot() || null;
   };
 
+  const performGlobalCapture = () => {
+    const screenshot = handleCaptureScreen();
+    if (screenshot) {
+        setAiContextImage(screenshot);
+        setAiContextSliceInfo({
+            slice: sliceIndex + 1,
+            total: activeSeries?.instanceCount,
+            label: activeSeries?.description || selectedStudy?.description
+        });
+        setShowCaptureToast(true);
+        setTimeout(() => setShowCaptureToast(false), 3000);
+    }
+  };
+
+  const clearGlobalCapture = () => {
+    setAiContextImage(null);
+    setAiContextSliceInfo(null);
+  };
+
   const handleClearSegment = (id: number) => {
      if (viewerRef.current) {
         viewerRef.current.removeSegment(id);
@@ -220,6 +259,9 @@ const App: React.FC = () => {
       </div>
 
       {showSafetyModal && <SafetyModal onClose={() => setShowSafetyModal(false)} />}
+      
+      {/* Guided Tour Overlay */}
+      {isTourOpen && <GuidedTour isOpen={isTourOpen} onClose={handleCloseTour} />}
 
       {/* Loading Screen for Auto Boot */}
       {isAutoBooting && (
@@ -250,6 +292,22 @@ const App: React.FC = () => {
           <div className="h-14 bg-gray-900 border-b border-gray-800 flex items-center justify-center px-4 flex-shrink-0 z-20">
               {/* Center Tools */}
               <div className="flex items-center justify-center gap-3">
+                {/* Capture Button - Tour Anchor */}
+                <button
+                    id="tour-capture-button" // tour anchor
+                    data-tour-id="capture"
+                    aria-label="Capture slice for AI assistant"
+                    onClick={performGlobalCapture}
+                    className="p-2 rounded-md flex flex-col items-center justify-center w-24 transition-all text-gray-400 hover:bg-gray-800 hover:text-gray-200 group"
+                    title="Capture current slice"
+                >
+                    <Camera className="w-5 h-5 mb-1 group-hover:text-white" />
+                    <span className="text-[9px] uppercase font-bold tracking-wider whitespace-nowrap">Capture</span>
+                </button>
+                
+                {/* Divider */}
+                <div className="w-px h-8 bg-gray-800/50 mx-1" />
+
                 {TOOLS.map((tool) => {
                   const Icon = tool.icon;
                   const isActive = activeTool === tool.id;
@@ -274,20 +332,6 @@ const App: React.FC = () => {
 
           <div className="flex-1 flex overflow-hidden">
               <div className="flex-1 flex flex-col relative min-w-0">
-                  {showOnboarding && (
-                    <div className="mx-4 mt-2 mb-2 px-3 py-2 bg-slate-900/80 border border-slate-700 rounded-lg text-xs text-slate-200 flex items-center justify-between backdrop-blur-sm animate-in fade-in slide-in-from-top-1 z-20">
-                        <div className="flex items-center gap-3">
-                            <span className="text-indigo-400 font-bold">3 Steps:</span>
-                            <span>(1) Pick a series, (2) capture a slice with the camera, (3) ask VibeRad to teach you what you are seeing.</span>
-                        </div>
-                        <button 
-                            onClick={dismissOnboarding}
-                            className="text-[10px] uppercase font-bold text-slate-500 hover:text-indigo-400 flex items-center gap-1 transition-colors"
-                        >
-                            Got it <X className="w-3 h-3" />
-                        </button>
-                    </div>
-                  )}
                   <ViewerCanvas 
                     ref={viewerRef}
                     series={activeSeries} 
@@ -326,7 +370,25 @@ const App: React.FC = () => {
                   <div className="flex border-b border-slate-800">
                       <button onClick={() => setActiveRightTab('measure')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors ${activeRightTab === 'measure' ? 'bg-slate-900 text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'}`}><Ruler className="w-3.5 h-3.5" /> Measure</button>
                       <button onClick={() => { setActiveRightTab('segment'); if (!segmentationLayer.activeSegmentId) setSegmentationLayer(prev => ({ ...prev, activeSegmentId: 1 })); }} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors ${activeRightTab === 'segment' ? 'bg-slate-900 text-emerald-400 border-b-2 border-emerald-500' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'}`}><Activity className="w-3.5 h-3.5" /> Seg</button>
-                      <button onClick={() => setActiveRightTab('ai')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors ${activeRightTab === 'ai' ? 'bg-slate-900 text-purple-400 border-b-2 border-purple-500' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'}`}><Sparkles className="w-3.5 h-3.5" /> AI</button>
+                      <button 
+                          id="tour-ai-tab" // tour anchor
+                          data-tour-id="ai-tab"
+                          aria-label="AI Assistant tab"
+                          onClick={() => setActiveRightTab('ai')} 
+                          className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors ${activeRightTab === 'ai' ? 'bg-slate-900 text-purple-400 border-b-2 border-purple-500' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'}`}
+                      >
+                          <Sparkles className="w-3.5 h-3.5" /> AI
+                      </button>
+                  </div>
+                  
+                  {/* Quick Tour Link - Subtle and always accessible */}
+                  <div className="bg-slate-950/50 border-b border-slate-800 py-1 flex justify-center">
+                       <button 
+                         onClick={handleRestartTour} 
+                         className="text-[11px] text-slate-500 hover:text-purple-300 underline cursor-pointer flex items-center gap-1.5 transition-colors"
+                       >
+                         <HelpCircle className="w-3 h-3" /> Take a quick tour
+                       </button>
                   </div>
 
                   <div className="flex-1 overflow-hidden relative">
@@ -353,7 +415,11 @@ const App: React.FC = () => {
                      </div>
                      <div className={`absolute inset-0 w-full h-full bg-slate-950 ${activeRightTab === 'ai' ? 'block z-10' : 'hidden'}`}>
                          <AiAssistantPanel 
-                            onCaptureScreen={handleCaptureScreen}
+                            capturedImage={aiContextImage}
+                            capturedSliceMetadata={aiContextSliceInfo}
+                            onCaptureTrigger={performGlobalCapture}
+                            onClearCapture={clearGlobalCapture}
+                            showCaptureToast={showCaptureToast}
                             studyMetadata={{ studyId: selectedStudy.id, patientName: selectedStudy.patientName, description: selectedStudy.description, modality: selectedStudy.modality }}
                             cursor={{ seriesInstanceUID: activeSeries?.id || '', frameIndex: sliceIndex, activeMeasurementId: activeMeasurementId }}
                             onJumpToSlice={setSliceIndex}
