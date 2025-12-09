@@ -288,18 +288,10 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
            return;
         }
 
-        // Adjust Pan to keep the image centered during resize
-        if (lastSizeRef.current) {
-            const deltaX = (newW - lastSizeRef.current.width) / 2;
-            const deltaY = (newH - lastSizeRef.current.height) / 2;
-            
-            if (deltaX !== 0 || deltaY !== 0) {
-                setViewport(vp => ({
-                    ...vp,
-                    pan: { x: vp.pan.x + deltaX, y: vp.pan.y + deltaY }
-                }));
-            }
-        }
+        // REMOVED: Incorrect pan adjustment logic that caused drift.
+        // We do not need to adjust 'pan' when resizing because 
+        // ctx.translate(canvas.width / 2 + viewport.pan.x) automatically 
+        // keeps the image in the center of the new canvas size if pan is unchanged.
         
         lastSizeRef.current = { width: newW, height: newH };
         setCanvasSize({ width: newW, height: newH });
@@ -654,7 +646,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
   return (
     <div 
-        className="flex-1 bg-black relative overflow-hidden select-none" 
+        className="flex-1 bg-black relative overflow-hidden select-none flex items-center justify-center" 
         ref={containerRef} 
         onWheel={handleWheel}
         onContextMenu={(e) => e.preventDefault()} 
