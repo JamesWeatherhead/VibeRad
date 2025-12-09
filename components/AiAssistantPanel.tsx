@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, MessageSquarePlus, Trash2, CheckCircle2, Zap, AlertCircle } from 'lucide-react';
-import { streamChatResponse, AiMode } from '../services/aiService';
+import { Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
+import { streamChatResponse, AiMode, generateFollowUpQuestions } from '../services/aiService';
 import { ChatMessage, CursorContext } from '../types';
 import { MarkdownText } from '../utils/markdownUtils';
-import { SUGGESTED_FOLLOWUPS } from '../constants';
+import { LearnerLevel, LEARNER_LEVELS } from '../constants';
 
 interface AiAssistantPanelProps {
   onCaptureScreen?: () => string | null;
@@ -19,6 +19,34 @@ interface AiAssistantPanelProps {
     description: string;
     instanceCount: number;
   };
+}
+
+// Initial static suggestions for "Zero State" only
+function getInitialSuggestions(
+  learnerLevel: LearnerLevel,
+  hasImageContext: boolean
+): string[] {
+  if (learnerLevel === 'highschool') {
+    return hasImageContext 
+      ? ["Explain simply", "What body part is this?"] 
+      : ["What is MRI?", "Is MRI safe?"];
+  }
+  if (learnerLevel === 'undergrad') {
+    return hasImageContext
+      ? ["Big picture", "Key structures"]
+      : ["MRI Physics intro", "Anatomy basics"];
+  }
+  if (learnerLevel === 'medstudent') {
+    return hasImageContext
+      ? ["Step-by-step", "Self-test", "Anatomical relations"]
+      : ["Search patterns", "Sequence guide"];
+  }
+  if (learnerLevel === 'resident') {
+     return hasImageContext
+      ? ["Pearls & pitfalls", "Compare sequences", "Guideline check"]
+      : ["Reporting templates", "Advanced physics artifacts"];
+  }
+  return [];
 }
 
 const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ 
@@ -41,7 +69,6 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [attachedScreenshot, setAttachedScreenshot] = useState<string | null>(null);
   
-  // Updated state to track slice index AND metadata at moment of capture
   const [capturedSliceInfo, setCapturedSliceInfo] = useState<{
     slice: number;
     total?: number;
@@ -50,12 +77,49 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   
   const [showCaptureToast, setShowCaptureToast] = useState(false);
   
-  // State for dynamic suggested follow-ups
-  const [suggestedFollowups, setSuggestedFollowups] = useState<string[]>(SUGGESTED_FOLLOWUPS);
+  // Learner Level State
+  const [learnerLevel, setLearnerLevel] = useState<LearnerLevel>(() => {
+    return (localStorage.getItem('viberad_learner_level') as LearnerLevel) || 'medstudent';
+  });
+  
+  // Dynamic suggestions cache (pre-fetched for all levels)
+  const [dynamicSuggestionsMap, setDynamicSuggestionsMap] = useState<Record<LearnerLevel, string[]> | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('viberad_learner_level', learnerLevel);
+  }, [learnerLevel]);
 
   useEffect(() => {
     if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
   }, [messages, isThinking]);
+
+  // Trigger suggestion generation when a MODEL message finishes
+  useEffect(() => {
+    const lastMsg = messages[messages.length - 1];
+    if (!isThinking && lastMsg && lastMsg.role === 'model' && messages.length > 1) {
+       // Find the last user message for context
+       const lastUserMsg = messages[messages.length - 2];
+       if (lastUserMsg) {
+          const hasImageContext = !!lastUserMsg.hasAttachment;
+          const label = capturedSliceInfo?.label || studyMetadata?.description || "MRI Slice";
+          const fullSliceLabel = capturedSliceInfo ? `Slice ${capturedSliceInfo.slice} (${label})` : label;
+
+          generateFollowUpQuestions(
+            lastUserMsg.text, 
+            lastMsg.text,
+            hasImageContext,
+            fullSliceLabel
+          ).then(suggestions => {
+             setDynamicSuggestionsMap(suggestions);
+          });
+       }
+    }
+  }, [messages, isThinking]);
+
+  // Derived suggestions: Use Dynamic if available, else Static Initial
+  const currentSuggestions = dynamicSuggestionsMap 
+      ? dynamicSuggestionsMap[learnerLevel] 
+      : getInitialSuggestions(learnerLevel, !!attachedScreenshot);
 
   const handleCapture = () => {
     if (onCaptureScreen) {
@@ -71,6 +135,9 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             }
             setShowCaptureToast(true);
             setTimeout(() => setShowCaptureToast(false), 4000);
+            
+            // Clear old suggestions when context changes drastically
+            setDynamicSuggestionsMap(null); 
         }
     }
   };
@@ -84,24 +151,23 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
     setAttachedScreenshot(null);
     setCapturedSliceInfo(null);
     setInput('');
-    setSuggestedFollowups(SUGGESTED_FOLLOWUPS);
     setShowCaptureToast(false);
+    setDynamicSuggestionsMap(null);
   };
 
-  const handleSendMessage = async (text: string = input) => {
-    if ((!text.trim() && !attachedScreenshot) || isThinking) return;
+  const handleSendMessage = async (text: string = input, promptOverride?: string) => {
+    const finalText = promptOverride || text;
+    if ((!finalText.trim() && !attachedScreenshot) || isThinking) return;
 
     const userMsg: ChatMessage = { 
-        id: Date.now().toString(), role: 'user', text: text, hasAttachment: !!attachedScreenshot
+        id: Date.now().toString(), role: 'user', text: finalText, hasAttachment: !!attachedScreenshot
     };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsThinking(true);
     
-    // Persistent Capture State: We use the attachedScreenshot if available
     const imageToSend = attachedScreenshot;
-
-    let promptToSend = userMsg.text;
+    let promptToSend = finalText;
     
     // Inject Study Context only for Search Mode
     if (mode === 'search' && studyMetadata) {
@@ -112,14 +178,10 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
 
     const botMsgId = (Date.now() + 1).toString();
     
-    // Construct metadata for the model message UI
     let botMessageExtras = {};
     if (imageToSend) {
-       // Use captured label or fallback
        let label = capturedSliceInfo?.label || studyMetadata?.description;
-       if (!label || label === "No Description" || label === "OT") {
-           label = "MRI series";
-       }
+       if (!label || label === "No Description" || label === "OT") label = "MRI series";
 
        botMessageExtras = {
           attachedSliceThumbnailDataUrl: imageToSend,
@@ -141,9 +203,9 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
     await streamChatResponse(
         promptToSend, 
         mode,
+        learnerLevel, // Pass level to chat context
         imageToSend, 
         (chunk, sources, toolCalls, followUps, fullTextReplace) => {
-            // Handle Tool Calls (Navigation)
             if (toolCalls && onJumpToSlice) {
                 toolCalls.forEach(call => {
                     if (call.name === 'set_cursor_frame') {
@@ -153,23 +215,16 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
                 });
             }
             
-            // Handle text updates
             if (fullTextReplace !== undefined) {
                 fullText = fullTextReplace;
             } else {
                 fullText += chunk;
             }
             
-            // Update suggestions if provided by the model
-            if (followUps && followUps.length > 0) {
-                setSuggestedFollowups(followUps);
-            }
-
             setMessages(prev => prev.map(m => m.id === botMsgId ? { 
                 ...m, 
                 text: fullText, 
-                sources: sources || m.sources,
-                followUps: followUps || m.followUps
+                sources: sources || m.sources
             } : m));
         }
     );
@@ -183,6 +238,26 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
           case 'deep_think': return 'High';
           case 'search': return 'High';
           default: return 'Low';
+      }
+  };
+
+  const getLearnerLevelShortLabel = (id: string) => {
+      switch(id) {
+          case 'highschool': return "HS";
+          case 'undergrad': return "Undergrad";
+          case 'medstudent': return "Med";
+          case 'resident': return "Resident";
+          default: return "Gen";
+      }
+  };
+
+  const getLearnerLevelTooltip = (id: string) => {
+      switch(id) {
+          case 'highschool': return "High school level explanation";
+          case 'undergrad': return "Undergraduate biology/pre-med";
+          case 'medstudent': return "Medical student level explanation";
+          case 'resident': return "Radiology resident level explanation";
+          default: return "";
       }
   };
 
@@ -276,14 +351,19 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
                 </div>
             ))}
 
-            {!isThinking && (
-                <div className="pt-2 flex flex-col gap-2 pb-2 animate-in fade-in duration-300">
-                    <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase">
-                         <MessageSquarePlus className="w-3 h-3" /> Suggested Follow-ups
+            {!isThinking && currentSuggestions.length > 0 && (
+                <div className="mt-3 animate-in fade-in duration-300">
+                    <div className="mb-2 text-[10px] text-slate-500 uppercase font-bold ml-1">
+                        Suggested Follow-ups
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                        {suggestedFollowups.map((sugg, idx) => (
-                            <button key={idx} onClick={() => handleSendMessage(sugg)} className="text-left text-xs bg-slate-800 hover:bg-slate-700 text-indigo-200 px-3 py-1.5 rounded-full border border-slate-700 transition-all">
+                    {/* Dynamic Suggestion Chips */}
+                    <div className="flex flex-wrap gap-2 mb-4">
+                        {currentSuggestions.map((sugg, idx) => (
+                            <button 
+                                key={idx} 
+                                onClick={() => handleSendMessage(sugg)} 
+                                className="text-left text-xs bg-slate-800 hover:bg-slate-700 text-indigo-200 px-3 py-1.5 rounded-full border border-slate-700 transition-all active:scale-95"
+                            >
                                 {sugg}
                             </button>
                         ))}
@@ -330,12 +410,34 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             {attachedScreenshot && (
                 <div className="relative inline-block border border-purple-500 rounded overflow-hidden shadow-lg group mb-3">
                     <img src={attachedScreenshot} alt="Snapshot" className="h-16 w-auto opacity-80 group-hover:opacity-100 transition-opacity" />
-                    <button onClick={() => { setAttachedScreenshot(null); setCapturedSliceInfo(null); }} className="absolute top-0 right-0 bg-black/50 hover:bg-red-500 text-white p-0.5"><X className="w-3 h-3" /></button>
+                    <button onClick={() => { setAttachedScreenshot(null); setCapturedSliceInfo(null); setDynamicSuggestionsMap(null); }} className="absolute top-0 right-0 bg-black/50 hover:bg-red-500 text-white p-0.5"><X className="w-3 h-3" /></button>
                     <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[9px] text-white px-1 text-center truncate">
                         {capturedSliceInfo ? `Slice ${capturedSliceInfo.slice}` : 'Captured'}
                     </div>
                 </div>
             )}
+            
+            {/* New Compact Learner Level Row */}
+            <div className="flex items-center justify-end mb-2 gap-2 text-[11px] text-slate-400">
+                <span className="hidden sm:inline text-slate-500 font-medium">Teaching Level:</span>
+                <div className="inline-flex rounded-lg bg-slate-950/50 border border-slate-700/50 p-0.5 gap-0.5">
+                    {LEARNER_LEVELS.map(level => (
+                        <button
+                            key={level.id}
+                            type="button"
+                            onClick={() => setLearnerLevel(level.id)}
+                            title={getLearnerLevelTooltip(level.id)}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all ${
+                                learnerLevel === level.id 
+                                ? 'bg-sky-600 text-white shadow-sm' 
+                                : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
+                            }`}
+                        >
+                            {getLearnerLevelShortLabel(level.id)}
+                        </button>
+                    ))}
+                </div>
+            </div>
 
             {/* Input Area */}
             <div className="relative flex gap-3 items-center">

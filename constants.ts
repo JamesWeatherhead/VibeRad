@@ -70,3 +70,55 @@ export const SUGGESTED_FOLLOWUPS = [
   "Help me describe what I see in simple terms.",
   "Quiz me on this region and then explain the answers.",
 ];
+
+export type LearnerLevel = "highschool" | "undergrad" | "medstudent" | "resident";
+
+export const LEARNER_LEVELS: { id: LearnerLevel; label: string }[] = [
+  { id: 'highschool', label: 'HS' },
+  { id: 'undergrad', label: 'Undergrad' },
+  { id: 'medstudent', label: 'Med student' },
+  { id: 'resident', label: 'Resident' },
+];
+
+export const FOLLOWUPS_BY_LEVEL: Record<LearnerLevel, { label: string; prompt: string }[]> = {
+  highschool: [
+    {
+      label: "Explain simply",
+      prompt: "Explain what is on this MRI slice in very simple terms for a curious high school student. Avoid jargon."
+    },
+    {
+      label: "What is this for?",
+      prompt: "Describe what type of MRI sequence this is and why doctors might order it, in simple language."
+    },
+  ],
+  undergrad: [
+    {
+      label: "Anatomy walkthrough",
+      prompt: "Walk me through the key anatomy on this slice as if I am a biology undergrad who knows basic anatomy but not radiology."
+    },
+    {
+      label: "MRI Physics Intro",
+      prompt: "Briefly connect what we see on this sequence to basic MRI physics, at an undergraduate level, without heavy math."
+    },
+  ],
+  medstudent: [
+    {
+      label: "MS1 Checklist",
+      prompt: "Give me a simple step by step checklist a first year medical student should follow when looking at this sequence."
+    },
+    {
+      label: "Key Landmarks",
+      prompt: "Point out the most important anatomical landmarks a medical student should be able to name on this slice."
+    },
+  ],
+  resident: [
+    {
+      label: "Systematic Read",
+      prompt: "Describe how a radiology resident should systematically read this slice, focusing on pattern recognition and pitfalls, without giving a formal report."
+    },
+    {
+      label: "Compare Sequences",
+      prompt: "Compare this slice with the typical appearance of the same region on T1 and T2, at a resident teaching level. Do not diagnose."
+    },
+  ],
+};

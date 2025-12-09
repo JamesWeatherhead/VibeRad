@@ -1,5 +1,6 @@
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Type, Schema } from "@google/genai";
 import { Measurement } from "../types";
+import { LearnerLevel } from "../constants";
 
 // Initialize the client with the environment API key
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -43,6 +44,13 @@ One sentence stating this is a teaching summary generated from anonymized demo d
 
 If free-text notes are supplied (e.g., "Teaching notes..."), treat them as draft observations from a learner. Clean them up and integrate them into the Key Imaging Features or Teaching Points, but do NOT upgrade them to definitive diagnoses.
 `;
+
+const LEVEL_INSTRUCTIONS: Record<LearnerLevel, string> = {
+  highschool: "Explain in very simple, non-medical terms suitable for a high school student. Use analogies. Avoid complex jargon.",
+  undergrad: "Explain suitable for an undergraduate biology student. Use basic anatomy terms and explain physics simply. Avoid clinical shorthand.",
+  medstudent: "Explain for a medical student. Use standard anatomical terminology, clinical reasoning, and step-by-step checklists.",
+  resident: "Explain for a radiology resident. Focus on pattern recognition, differential diagnoses, pitfalls, and relevant guidelines."
+};
 
 const RADIOLOGY_ASSISTANT_SYSTEM_PROMPT = `
 You are the VibeRad Radiology Assistant inside a web DICOM viewer.
@@ -93,12 +101,6 @@ Formatting rules:
   - **Bold** to highlight key phrases.
 - Do NOT use tables, images, or fenced code blocks.
 - Keep answers concise and scannable.
-
-IMPORTANT:
-At the very end of your response, you MUST generate a list of 2-4 short, educational follow-up questions relevant to the slice and your explanation.
-Format this list as a valid JSON array of strings on a new line, prefixed exactly with "FOLLOW_UPS:".
-Example:
-FOLLOW_UPS: ["Question 1", "Question 2"]
 `;
 
 // --- MODE CONFIGURATION ---
@@ -222,33 +224,10 @@ export const generateRadiologyReport = async (payload: ReportPayload, imageBase6
 
 // --- CHAT WITH THINKING & SEARCH & VISION ---
 
-const FOLLOW_UP_PREFIX = "FOLLOW_UPS:";
-
-function extractFollowUps(raw: string): { content: string; followUps: string[] } {
-  const idx = raw.lastIndexOf(FOLLOW_UP_PREFIX);
-  if (idx === -1) return { content: raw.trim(), followUps: [] };
-
-  const content = raw.slice(0, idx).trim();
-  const jsonPart = raw.slice(idx + FOLLOW_UP_PREFIX.length).trim();
-
-  try {
-    const parsed = JSON.parse(jsonPart);
-    if (Array.isArray(parsed)) {
-      return {
-        content,
-        followUps: parsed.filter((q) => typeof q === "string"),
-      };
-    }
-  } catch {
-    // If parsing fails, just return the content with no follow-ups
-  }
-
-  return { content, followUps: [] };
-}
-
 export const streamChatResponse = async (
   message: string,
   mode: AiMode,
+  learnerLevel: LearnerLevel,
   imageBase64: string | null,
   onChunk: (text: string, sources?: any[], toolCalls?: any[], followUps?: string[], fullTextReplace?: string) => void
 ) => {
@@ -259,7 +238,6 @@ export const streamChatResponse = async (
     // Tools logic:
     // Chat & Deep Think = No tools.
     // Search = Google Search only.
-    // Navigation (function calling) is currently unsupported with Thinking models.
     let tools: any[] | undefined = undefined;
     if (currentConfig.useSearch) {
       tools = [{ googleSearch: {} }];
@@ -267,7 +245,7 @@ export const streamChatResponse = async (
 
     // --- CONTEXT CONSTRUCTION ---
     // We build a specific text context that enforces the image safety rules strictly.
-    let systemContext = "You are VibeRad, a radiology teaching assistant. You can optionally see one MRI slice if the user has captured it. Explain in simple language for a medical student. Do not provide diagnoses or treatment.\n\n";
+    let systemContext = `You are VibeRad, a radiology teaching assistant. ${LEVEL_INSTRUCTIONS[learnerLevel]} Do not provide diagnoses or treatment.\n\n`;
 
     if (mode === 'deep_think') {
         systemContext += "You are in DEEP THINK mode. Consider the question carefully, but still present only a concise explanation and structured Markdown sections.\n\n";
@@ -332,13 +310,6 @@ export const streamChatResponse = async (
       }
     }
 
-    // Post-stream processing: Extract and clean follow-ups
-    const { content, followUps } = extractFollowUps(fullText);
-    if (followUps.length > 0) {
-        // Send replacement text (content) and followUps
-        onChunk("", undefined, undefined, followUps, content);
-    }
-
   } catch (error: any) {
     console.error("Chat Error:", error);
     onChunk(`\n[System Error]: ${error.message}`);
@@ -347,42 +318,93 @@ export const streamChatResponse = async (
 
 // --- DYNAMIC SUGGESTION ENGINE ---
 
-export const generateFollowUpQuestions = async (lastUserMessage: string, lastBotResponse: string): Promise<string[]> => {
+/**
+ * Generates context-aware follow-ups for ALL learner levels at once.
+ * This allows immediate UI updates when the user switches levels.
+ */
+export const generateFollowUpQuestions = async (
+  lastUserMessage: string, 
+  lastBotResponse: string,
+  hasImageContext: boolean,
+  sliceLabel?: string
+): Promise<Record<LearnerLevel, string[]>> => {
   try {
     const prompt = `
-      Given the following medical/radiology context:
-      User asked: "${lastUserMessage.substring(0, 500)}"
-      AI answered: "${lastBotResponse.substring(0, 1000)}"
+      You are VibeRad, an educational radiology teaching assistant.
+      You see:
+      - The latest user question: "${lastUserMessage.substring(0, 300)}"
+      - Your latest answer: "${lastBotResponse.substring(0, 500)}"
+      - Has Image Context: ${hasImageContext}
+      - Slice Label: "${sliceLabel || 'Unknown'}"
 
-      Provide 3 short, EDUCATIONAL follow-up questions the user might want to ask next.
+      Your job is to propose 3 natural follow-up questions for each learner level:
+      - hs          = curious high school student
+      - undergrad   = pre-med or neuroscience major
+      - med         = medical student on radiology rotation
+      - resident    = radiology resident early in training
 
-      SUGGESTED FOLLOW-UPS POLICY (STRICT):
-      - These follow-ups are for EDUCATIONAL USE ONLY.
-      - Focus on Anatomy, Image Interpretation Skills, or General Teaching.
-      - DO NOT ask for diagnosis, differential diagnosis, management, or prognosis.
-      - DO NOT suggest questions that imply diagnosing this specific case.
+      Rules:
+      1. Always read the user's last question and your answer. Follow-ups must feel like the next thing that learner might ask in THIS conversation, not generic trivia.
+      2. For EACH level, you must return exactly 3 follow-up questions.
+      3. The first suggestion for each level must depend on image context:
+         - If hasImageContext = true:
+           - The first question must explicitly reference "this slice", "this image", or the specific sliceLabel (e.g. "On this Slice 12...").
+         - If hasImageContext = false:
+           - The first question must be about the general concept, sequence, or explanation from the last answer, NOT about a specific image.
+      4. All suggestions must be phrased as if the learner is speaking to you (e.g., "Can you explain..." / "How would I...").
+      5. Do NOT suggest questions that ask for diagnoses, management decisions, or patient-specific treatment recommendations. Stay in teaching mode only.
 
-      Format rules:
-      - Return ONLY the questions, one per line.
-      - No numbering or bullets.
-      - Maximum 10 words per question.
+      Level calibration:
+      - hs: Very simple, plain language. Focus on big picture.
+      - undergrad: Approachable, basic biology/physics.
+      - med: Structured learning, checklists, systematic approaches.
+      - resident: Reporting structure, pitfalls, subtle patterns.
+
+      Examples when hasImageContext = true and sliceLabel = "Slice 12 (T1 post-contrast)":
+      - hs first suggestion: "Can you explain what I am seeing on this Slice 12 image in really simple terms?"
+      - undergrad first suggestion: "On this Slice 12 T1 post-contrast image, which big regions should I recognize and what do they do?"
+      - med first suggestion: "For this Slice 12 T1 post-contrast image, can you walk me through a med-student style checklist for reading it?"
+      - resident first suggestion: "On this Slice 12 T1 post-contrast slice, what are the main pitfalls or artifacts I should watch for when reporting?"
+
+      Examples when hasImageContext = false:
+      - hs first suggestion: "Can you explain again in very simple words what this type of MRI scan is used for?"
+      - undergrad first suggestion: "How does this MRI sequence actually change the signal so some tissues look brighter?"
+      - med first suggestion: "Can you give me a med-student level checklist for reading this sequence in general, even without a specific case?"
+      - resident first suggestion: "From a resident perspective, what are the most important technical or interpretive pitfalls of this sequence in general?"
+
+      Return JSON.
     `;
+
+    const schema: Schema = {
+      type: Type.OBJECT,
+      properties: {
+        highschool: { type: Type.ARRAY, items: { type: Type.STRING } },
+        undergrad: { type: Type.ARRAY, items: { type: Type.STRING } },
+        medstudent: { type: Type.ARRAY, items: { type: Type.STRING } },
+        resident: { type: Type.ARRAY, items: { type: Type.STRING } },
+      },
+      required: ['highschool', 'undergrad', 'medstudent', 'resident']
+    };
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: prompt,
-      config: { thinkingConfig: { thinkingLevel: 'low' } }
+      config: { 
+        thinkingConfig: { thinkingLevel: 'low' },
+        responseMimeType: 'application/json',
+        responseSchema: schema
+      }
     });
 
-    const text = response.text || "";
-    const suggestions = text.split('\n')
-      .map(s => s.trim().replace(/^[-*•\d\.]+\s*/, ''))
-      .filter(s => s.length > 5);
-    
-    return suggestions.slice(0, 3);
+    const text = response.text;
+    if (!text) return { highschool: [], undergrad: [], medstudent: [], resident: [] };
+
+    const parsed = JSON.parse(text);
+    return parsed as Record<LearnerLevel, string[]>;
 
   } catch (e) {
-    return [];
+    console.error("Suggestion generation failed", e);
+    return { highschool: [], undergrad: [], medstudent: [], resident: [] };
   }
 };
 
@@ -403,8 +425,8 @@ export const testReportPayloadIntegrity = async (): Promise<boolean> => {
 
 export const testSuggestionEngine = async (): Promise<boolean> => {
     try {
-        const suggestions = await generateFollowUpQuestions("CT", "Computed Tomography");
-        return (Array.isArray(suggestions));
+        const suggestions = await generateFollowUpQuestions("CT", "Computed Tomography", false);
+        return (suggestions.medstudent.length > 0);
     } catch { return false; }
 };
 
