@@ -10,7 +10,6 @@ import {
   Plus,
   Eraser,
   Layers,
-  ArrowRight,
   Edit2
 } from 'lucide-react';
 
@@ -237,12 +236,9 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
                                     <span className="font-mono">Slice {sliceInfo.sliceIndex + 1}</span>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                     <span className="px-1.5 py-0.5 bg-slate-800 rounded text-[9px] text-slate-500 font-medium">
-                                        {sliceInfo.labelCount} label{sliceInfo.labelCount !== 1 ? 's' : ''}
-                                     </span>
-                                     <ArrowRight className="w-3 h-3 text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                </div>
+                                <span className="px-1.5 py-0.5 bg-slate-800 rounded text-[9px] text-slate-500 font-medium">
+                                   {sliceInfo.labelCount} label{sliceInfo.labelCount !== 1 ? 's' : ''}
+                                </span>
                             </div>
                         ))}
                     </div>
