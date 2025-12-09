@@ -9,6 +9,8 @@ import {
   Circle,
   Plus,
   Eraser,
+  Layers,
+  ArrowRight
 } from 'lucide-react';
 
 interface SegmentationPanelProps {
@@ -17,6 +19,7 @@ interface SegmentationPanelProps {
   activeTool: ToolMode;
   onSelectTool: (tool: ToolMode) => void;
   onClearSegment?: (id: number) => void;
+  onJumpToSlice?: (index: number) => void;
 }
 
 const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
@@ -25,6 +28,7 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
   activeTool,
   onSelectTool,
   onClearSegment,
+  onJumpToSlice
 }) => {
   // New label form state
   const [newLabelName, setNewLabelName] = useState('');
@@ -86,10 +90,13 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
         : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
     }`;
 
+  // Sort slices for display
+  const sortedSlices = [...(layer.segmentedSlices || [])].sort((a, b) => a.sliceIndex - b.sliceIndex);
+
   return (
     <div className="w-full bg-slate-950 border-l border-slate-800 flex flex-col h-full">
       {/* Header */}
-      <div className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between">
+      <div className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2 text-slate-100 font-bold">
           <Activity className="w-4 h-4 text-emerald-500" />
           <span>Segmentation</span>
@@ -118,7 +125,7 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
       </div>
 
       {/* Layer Controls */}
-      <div className="p-4 border-b border-slate-800 bg-slate-900/50 space-y-3">
+      <div className="p-4 border-b border-slate-800 bg-slate-900/50 space-y-3 flex-shrink-0">
         {/* Tool mode buttons */}
         <div className="flex items-center justify-between gap-2">
           <button
@@ -194,9 +201,47 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
         </div>
       </div>
 
-      {/* Segments List + Add label */}
+      {/* Main Content Area: Flex List */}
       <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-slate-950 [&::-webkit-scrollbar-thumb]:bg-slate-800 hover:[&::-webkit-scrollbar-thumb]:bg-slate-700">
-        <div className="px-4 py-2 text-xs font-bold text-slate-500 uppercase bg-slate-950 sticky top-0 border-b border-slate-800 flex flex-col gap-2">
+        
+        {/* Segmented Slices List */}
+        <div className="border-b border-slate-800">
+             <div className="px-4 py-2 text-xs font-bold text-slate-500 uppercase bg-slate-950 flex flex-col">
+                <span className="flex items-center gap-2"><Layers className="w-3 h-3" /> Segmented Slices</span>
+                <span className="text-[9px] text-slate-600 font-normal mt-0.5 normal-case">Click to jump viewer</span>
+             </div>
+             <div className="px-2 pb-2">
+                {sortedSlices.length === 0 ? (
+                    <div className="p-4 text-center text-[10px] text-slate-600 italic">
+                        No slices painted yet — pick a label and use Brush to start segmenting.
+                    </div>
+                ) : (
+                    <div className="space-y-1">
+                        {sortedSlices.map((sliceInfo) => (
+                            <div 
+                                key={sliceInfo.sliceIndex}
+                                onClick={() => onJumpToSlice && onJumpToSlice(sliceInfo.sliceIndex)}
+                                className="flex items-center justify-between px-3 py-2 text-xs text-slate-300 hover:bg-slate-900 cursor-pointer rounded border border-transparent hover:border-slate-800 transition-colors group"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                    <span className="font-mono">Slice {sliceInfo.sliceIndex + 1}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                     <span className="px-1.5 py-0.5 bg-slate-800 rounded text-[9px] text-slate-500 font-medium">
+                                        {sliceInfo.labelCount} label{sliceInfo.labelCount !== 1 ? 's' : ''}
+                                     </span>
+                                     <ArrowRight className="w-3 h-3 text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+             </div>
+        </div>
+
+        {/* Segments Palette */}
+        <div className="px-4 py-2 text-xs font-bold text-slate-500 uppercase bg-slate-950 sticky top-0 border-b border-slate-800 flex flex-col gap-2 mt-2">
           <div className="flex justify-between items-center">
             <span>Segments Palette</span>
             <span className="text-[10px] text-slate-600 font-normal">
@@ -264,7 +309,7 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
       </div>
 
       {/* Footer Info */}
-      <div className="p-3 bg-slate-900 border-t border-slate-800 text-[10px] text-slate-500 text-center">
+      <div className="p-3 bg-slate-900 border-t border-slate-800 text-[10px] text-slate-500 text-center flex-shrink-0">
         Select a label, then use Brush to paint or Eraser to remove
       </div>
     </div>

@@ -102,12 +102,18 @@ export interface Segment {
   isVisible: boolean;
 }
 
+export interface SegmentedSlice {
+  sliceIndex: number;
+  labelCount: number;
+}
+
 export interface SegmentationLayer {
   opacity: number;
   isVisible: boolean;
   activeSegmentId: number | null; // The segment currently being drawn
   segments: Segment[];
   brushSize: number;
+  segmentedSlices: SegmentedSlice[];
 }
 
 // AI Types

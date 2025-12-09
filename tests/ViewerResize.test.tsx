@@ -68,7 +68,8 @@ describe('ViewerCanvas Resize Logic', () => {
     isVisible: true,
     activeSegmentId: null,
     segments: [],
-    brushSize: 10
+    brushSize: 10,
+    segmentedSlices: []
   };
 
   const defaultProps = {

@@ -44,7 +44,8 @@ const App: React.FC = () => {
     isVisible: true,
     activeSegmentId: null,
     segments: MOCK_SEGMENTATION_DATA,
-    brushSize: 15
+    brushSize: 15,
+    segmentedSlices: [] // Initialize new list
   });
 
   const [sidebarWidth, setSidebarWidth] = useState(320);
@@ -201,6 +202,9 @@ const App: React.FC = () => {
       // Reset capture context on series change to avoid stale context
       setAiContextImage(null);
       setAiContextSliceInfo(null);
+      
+      // Clear segmented slices list on series change since canvas is cleared
+      setSegmentationLayer(prev => ({ ...prev, segmentedSlices: [] }));
     }
   }, [activeSeries?.id]);
 
@@ -247,6 +251,25 @@ const App: React.FC = () => {
      if (viewerRef.current) {
         viewerRef.current.removeSegment(id);
      }
+  };
+
+  const handleSegmentedSliceUpdate = (sliceIdx: number, labelCount: number) => {
+    setSegmentationLayer(prev => {
+        // Remove existing entry for this slice
+        const filtered = prev.segmentedSlices.filter(s => s.sliceIndex !== sliceIdx);
+        // If it has labels, add new entry
+        if (labelCount > 0) {
+            return {
+                ...prev,
+                segmentedSlices: [...filtered, { sliceIndex: sliceIdx, labelCount }]
+            };
+        }
+        // If count is 0, just remove
+        return {
+            ...prev,
+            segmentedSlices: filtered
+        };
+    });
   };
 
   return (
@@ -345,6 +368,7 @@ const App: React.FC = () => {
                     onMeasurementUpdate={(m) => handleMeasurementUpdate(m.id, m)}
                     activeMeasurementId={activeMeasurementId}
                     segmentationLayer={segmentationLayer}
+                    onSegmentedSliceUpdate={handleSegmentedSliceUpdate}
                   />
                   <div className="flex-shrink-0 z-10">
                     <SeriesSelector 
@@ -410,7 +434,8 @@ const App: React.FC = () => {
                             onChange={setSegmentationLayer} 
                             activeTool={activeTool} 
                             onSelectTool={setActiveTool}
-                            onClearSegment={handleClearSegment} 
+                            onClearSegment={handleClearSegment}
+                            onJumpToSlice={setSliceIndex}
                          />
                      </div>
                      <div className={`absolute inset-0 w-full h-full bg-slate-950 ${activeRightTab === 'ai' ? 'block z-10' : 'hidden'}`}>

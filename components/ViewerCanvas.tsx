@@ -20,6 +20,7 @@ interface ViewerCanvasProps {
   activeMeasurementId: string | null;
 
   segmentationLayer: SegmentationLayer;
+  onSegmentedSliceUpdate?: (sliceIndex: number, labelCount: number) => void;
 }
 
 const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({ 
@@ -33,7 +34,8 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   onMeasurementAdd,
   onMeasurementUpdate,
   activeMeasurementId,
-  segmentationLayer
+  segmentationLayer,
+  onSegmentedSliceUpdate
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -43,6 +45,8 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   const maskCacheRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
   // Segmentation Visual: Stores the colored, visible output
   const renderCacheRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
+  // Segmentation Tracking: Tracks unique segment IDs per slice (sliceIndex -> Set<segmentId>)
+  const sliceSegmentIdsRef = useRef<Map<number, Set<number>>>(new Map());
   
   // Local Viewport State (Pan/Zoom/WWWC only)
   const [viewport, setViewport] = useState<ViewportState>(DEFAULT_VIEWPORT_STATE);
@@ -100,6 +104,14 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         
         if (dirty) {
            ctx.putImageData(imageData, 0, 0);
+        }
+      });
+      
+      // Update tracking sets to remove this ID
+      sliceSegmentIdsRef.current.forEach((ids, sliceIdx) => {
+        if (ids.has(id)) {
+            ids.delete(id);
+            onSegmentedSliceUpdate?.(sliceIdx, ids.size);
         }
       });
       
@@ -190,6 +202,42 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         maskCacheRef.current.set(sliceIndex, c);
      }
      return maskCacheRef.current.get(sliceIndex)!;
+  };
+
+  const recomputeSliceSegments = (sliceIdx: number) => {
+    const existing = sliceSegmentIdsRef.current.get(sliceIdx);
+    if (!existing || existing.size === 0) return;
+  
+    const maskCanvas = maskCacheRef.current.get(sliceIdx);
+    if (!maskCanvas) {
+      // No mask at all → clear set and badge
+      sliceSegmentIdsRef.current.set(sliceIdx, new Set());
+      onSegmentedSliceUpdate?.(sliceIdx, 0);
+      return;
+    }
+  
+    const ctx = maskCanvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+  
+    const { width, height } = maskCanvas;
+    const { data } = ctx.getImageData(0, 0, width, height);
+  
+    const remaining = new Set<number>();
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];        // stored segment id
+      const a = data[i + 3];    // alpha
+      if (a > 0 && existing.has(r)) {
+        remaining.add(r);
+        // Optimization: if we found all existing IDs, we can stop early
+        if (remaining.size === existing.size) break;
+      }
+    }
+  
+    // Only update and notify if something actually changed
+    if (remaining.size !== existing.size) {
+      sliceSegmentIdsRef.current.set(sliceIdx, remaining);
+      onSegmentedSliceUpdate?.(sliceIdx, remaining.size);
+    }
   };
 
   // --- MAIN RENDER FUNCTION ---
@@ -299,6 +347,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
       setLoadError(null);
       maskCacheRef.current.clear();
       renderCacheRef.current.clear();
+      sliceSegmentIdsRef.current.clear(); // Clear segmentation tracking
       setRenderTick(0);
       
       // Clear image and reset fit flag for new series
@@ -470,6 +519,20 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      const size = segmentationLayer.brushSize;
      const segId = segmentationLayer.activeSegmentId;
 
+     // Update Segmentation Tracking (Intent-based, not pixel-based)
+     if (!isEraser && segId) {
+         let sliceSets = sliceSegmentIdsRef.current.get(sliceIndex);
+         if (!sliceSets) {
+             sliceSets = new Set();
+             sliceSegmentIdsRef.current.set(sliceIndex, sliceSets);
+         }
+         
+         if (!sliceSets.has(segId)) {
+             sliceSets.add(segId);
+             onSegmentedSliceUpdate?.(sliceIndex, sliceSets.size);
+         }
+     }
+
      let visualColor = 'rgba(0,0,0,0)';
      if (!isEraser && segId) {
          const seg = segmentationLayer.segments.find(s => s.id === segId);
@@ -524,6 +587,11 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      
      // 3. FORCE IMMEDIATE RENDER TO SCREEN (Bypasses React State Cycle for smooth lines)
      renderScene();
+
+     // 4. Update Segmentation Count if Erasing
+     if (isEraser) {
+       recomputeSliceSegments(sliceIndex);
+     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -585,6 +653,8 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   };
 
   const handleMouseUp = () => {
+    // const wasDragging = interactionRef.current.isDragging;
+    
     interactionRef.current.isDragging = false;
     interactionRef.current.dragStart = null;
     interactionRef.current.lastDrawPoint = null;
