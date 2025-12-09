@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
+import { Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, Trash2, CheckCircle2, AlertTriangle, RotateCcw } from 'lucide-react';
 import { streamChatResponse, AiMode, generateFollowUpQuestions } from '../services/aiService';
 import { ChatMessage, CursorContext } from '../types';
 import { MarkdownText } from '../utils/markdownUtils';
@@ -99,7 +99,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
     if (!isThinking && lastMsg && lastMsg.role === 'model' && messages.length > 1) {
        // Find the last user message for context
        const lastUserMsg = messages[messages.length - 2];
-       if (lastUserMsg) {
+       if (lastUserMsg && lastUserMsg.role === 'user') {
           const hasImageContext = !!lastUserMsg.hasAttachment;
           const label = capturedSliceInfo?.label || studyMetadata?.description || "MRI Slice";
           const fullSliceLabel = capturedSliceInfo ? `Slice ${capturedSliceInfo.slice} (${label})` : label;
@@ -159,11 +159,17 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
     const finalText = promptOverride || text;
     if ((!finalText.trim() && !attachedScreenshot) || isThinking) return;
 
+    // 1. Optimistically Add User Message
     const userMsg: ChatMessage = { 
         id: Date.now().toString(), role: 'user', text: finalText, hasAttachment: !!attachedScreenshot
     };
     setMessages(prev => [...prev, userMsg]);
-    setInput('');
+    
+    // Save current input to restore on error if needed
+    const textToRestore = input;
+    
+    // Clear Input immediately for responsiveness, but we might restore it on error.
+    if (!promptOverride) setInput('');
     setIsThinking(true);
     
     const imageToSend = attachedScreenshot;
@@ -190,6 +196,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
        };
     }
 
+    // 2. Add "Thinking" Placeholder
     setMessages(prev => [...prev, { 
         id: botMsgId, 
         role: 'model', 
@@ -198,38 +205,59 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
         ...botMessageExtras
     }]);
 
-    let fullText = '';
-    
-    await streamChatResponse(
-        promptToSend, 
-        mode,
-        learnerLevel, // Pass level to chat context
-        imageToSend, 
-        (chunk, sources, toolCalls, followUps, fullTextReplace) => {
-            if (toolCalls && onJumpToSlice) {
-                toolCalls.forEach(call => {
-                    if (call.name === 'set_cursor_frame') {
-                        const idx = Math.round(call.args.index);
-                        if (!isNaN(idx)) onJumpToSlice(idx);
-                    }
-                });
+    try {
+        let fullText = '';
+        await streamChatResponse(
+            promptToSend, 
+            mode,
+            learnerLevel, // Pass level to chat context
+            imageToSend, 
+            (chunk, sources, toolCalls, followUps, fullTextReplace) => {
+                if (toolCalls && onJumpToSlice) {
+                    toolCalls.forEach(call => {
+                        if (call.name === 'set_cursor_frame') {
+                            const idx = Math.round(call.args.index);
+                            if (!isNaN(idx)) onJumpToSlice(idx);
+                        }
+                    });
+                }
+                
+                if (fullTextReplace !== undefined) {
+                    fullText = fullTextReplace;
+                } else {
+                    fullText += chunk;
+                }
+                
+                setMessages(prev => prev.map(m => m.id === botMsgId ? { 
+                    ...m, 
+                    text: fullText, 
+                    sources: sources || m.sources
+                } : m));
             }
-            
-            if (fullTextReplace !== undefined) {
-                fullText = fullTextReplace;
-            } else {
-                fullText += chunk;
-            }
-            
-            setMessages(prev => prev.map(m => m.id === botMsgId ? { 
-                ...m, 
-                text: fullText, 
-                sources: sources || m.sources
-            } : m));
-        }
-    );
+        );
+    } catch (error: any) {
+        // ERROR HANDLING
+        console.error("Chat Error Caught in Component:", error);
 
-    setIsThinking(false);
+        // 1. Remove the placeholder bot message
+        setMessages(prev => prev.filter(m => m.id !== botMsgId));
+        
+        // 2. Restore input if it was typed by user (not a suggestion click)
+        if (!promptOverride) {
+            setInput(textToRestore);
+        }
+
+        // 3. Add Error Message Card
+        const errorMessage: ChatMessage = {
+            id: Date.now().toString(),
+            role: 'error',
+            text: error.message || "An unexpected error occurred.",
+            originalPrompt: finalText // Save for retry
+        };
+        setMessages(prev => [...prev, errorMessage]);
+    } finally {
+        setIsThinking(false);
+    }
   };
 
   const getThinkingLevelLabel = () => {
@@ -309,7 +337,37 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
 
       <div className="flex-1 overflow-hidden relative flex flex-col">
         <div className="flex-1 overflow-y-auto p-4 space-y-5 no-scrollbar" ref={chatContainerRef}>
-            {messages.map((m) => (
+            {messages.map((m) => {
+                if (m.role === 'error') {
+                   return (
+                      <div key={m.id} className="flex flex-col items-center animate-in fade-in slide-in-from-bottom-2">
+                          <div className="max-w-[90%] w-full bg-red-950/40 border border-red-500/30 rounded-xl p-3 flex items-start gap-3 shadow-lg">
+                              <div className="mt-0.5 p-1 bg-red-500/10 rounded-full">
+                                  <AlertTriangle className="w-4 h-4 text-red-400" />
+                              </div>
+                              <div className="flex-1">
+                                  <div className="text-xs font-bold text-red-300 mb-1">Gemini Request Failed</div>
+                                  <div className="text-xs text-red-200/80 leading-relaxed mb-2">
+                                     {m.text}
+                                  </div>
+                                  <div className="text-[10px] text-red-400/60 mb-2">
+                                     Your question has been preserved above.
+                                  </div>
+                                  {m.originalPrompt && (
+                                     <button 
+                                        onClick={() => handleSendMessage(m.originalPrompt)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs rounded-md border border-red-500/20 transition-colors"
+                                     >
+                                        <RotateCcw className="w-3 h-3" /> Retry Request
+                                     </button>
+                                  )}
+                              </div>
+                          </div>
+                      </div>
+                   );
+                }
+
+                return (
                 <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                     <div className={`max-w-[95%] rounded-xl p-3 shadow-sm ${m.role === 'user' ? 'bg-gradient-to-br from-purple-900/40 to-indigo-900/40 text-purple-100 border border-purple-700/50' : 'bg-slate-800/80 text-slate-200 border border-slate-700'}`}>
                         
@@ -349,7 +407,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
                         )}
                     </div>
                 </div>
-            ))}
+            )})}
 
             {!isThinking && currentSuggestions.length > 0 && (
                 <div className="mt-3 animate-in fade-in duration-300">

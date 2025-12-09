@@ -312,7 +312,15 @@ export const streamChatResponse = async (
 
   } catch (error: any) {
     console.error("Chat Error:", error);
-    onChunk(`\n[System Error]: ${error.message}`);
+    // Standardize error and throw to UI for handling
+    let userMessage = "Sorry, I encountered an error connecting to Gemini 3.";
+    if (error.message) {
+        if (error.message.includes("429")) userMessage = "High traffic (429). Please try again in a moment.";
+        else if (error.message.includes("500") || error.message.includes("503")) userMessage = "Gemini service temporary unavailable. Please try again.";
+        else if (error.message.includes("SAFETY")) userMessage = "I cannot answer this query due to safety guidelines.";
+        else userMessage = `API Error: ${error.message}`;
+    }
+    throw new Error(userMessage);
   }
 };
 

@@ -1,4 +1,5 @@
 
+
 // Domain Models
 
 export interface Study {
@@ -112,7 +113,7 @@ export interface SegmentationLayer {
 // AI Types
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'model';
+  role: 'user' | 'model' | 'error';
   text: string;
   isThinking?: boolean;
   sources?: Array<{ uri: string; title: string }>;
@@ -124,4 +125,7 @@ export interface ChatMessage {
   attachedSliceIndex?: number;
   attachedSequenceLabel?: string;
   attachedSliceThumbnailDataUrl?: string;
+
+  // Error Handling
+  originalPrompt?: string; // For retry logic
 }
