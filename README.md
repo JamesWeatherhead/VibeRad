@@ -19,9 +19,12 @@ VibeRad uses **Gemini 3 Pro Preview** exclusively for all AI interactions, lever
 - **Chat Mode:** Uses `thinking_level = "low"` for low-latency, conversational interactions.
 - **Search Mode:** Uses `thinking_level = "high"` combined with Google Search to ground answers in medical literature.
 
-### Native Multimodality
-- **Vision:** The AI "sees" the current DICOM slice and viewport state to answer context-aware questions (e.g., "What region is highlighted?").
-- **Deep Think uses `media_resolution_high` for captured MRI slices; other modes use `media_resolution_medium`.**
+### Camera-based Multimodality
+To ensure transparency and control, VibeRad uses an explicit **capture-based vision system**:
+- **Opt-in Vision:** Gemini 3 Pro does not passively watch the viewport. The user must click the **Capture 📸** button to explicitly send the current slice to the AI.
+- **Persistent Context:** Once captured, that specific slice remains the "active context" for all subsequent questions until cleared or replaced.
+- **No Hallucination:** If no image is captured, Gemini 3 is instructed to explicitly state that it cannot see the image, preventing accidental hallucinations about unseen data.
+- **High Fidelity:** When using Deep Think mode, the captured image is processed with `media_resolution_high` for maximum anatomical detail.
 
 ### Grounded in Reality
 Using the **Google Search Tool**, VibeRad can cross-reference imaging findings with up-to-date medical guidelines and literature, reducing hallucinations and giving students citation-style links for further reading.
@@ -38,6 +41,8 @@ Unlike static chat interfaces, VibeRad is a fully functional DICOMweb viewer bui
 - **AI SDK:** `@google/genai`
 - **Models:**
   - `gemini-3-pro-preview` (All AI modes run on Gemini 3 Pro Preview)
+  - **Context Window:** 1M input tokens / 64k output tokens.
+  - **Knowledge Cutoff:** Jan 2025.
 - **Protocol:** DICOMweb (QIDO-RS, WADO-RS)
 
 ### Code Highlights

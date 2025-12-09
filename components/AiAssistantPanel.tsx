@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, MessageSquarePlus, Trash2 } from 'lucide-react';
+import { Bot, Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, MessageSquarePlus, Trash2, CheckCircle2, Zap, AlertCircle } from 'lucide-react';
 import { streamChatResponse, AiMode } from '../services/aiService';
 import { ChatMessage, CursorContext } from '../types';
 import { MarkdownText } from '../utils/markdownUtils';
@@ -30,6 +30,8 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
   const [mode, setMode] = useState<AiMode>('chat');
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [attachedScreenshot, setAttachedScreenshot] = useState<string | null>(null);
+  const [capturedSliceInfo, setCapturedSliceInfo] = useState<{slice: number} | null>(null);
+  const [showCaptureToast, setShowCaptureToast] = useState(false);
   
   // State for dynamic suggested follow-ups
   const [suggestedFollowups, setSuggestedFollowups] = useState<string[]>(SUGGESTED_FOLLOWUPS);
@@ -41,7 +43,14 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
   const handleCapture = () => {
     if (onCaptureScreen) {
         const screenshot = onCaptureScreen();
-        if (screenshot) setAttachedScreenshot(screenshot);
+        if (screenshot) {
+            setAttachedScreenshot(screenshot);
+            if (cursor) {
+                setCapturedSliceInfo({ slice: cursor.frameIndex + 1 });
+            }
+            setShowCaptureToast(true);
+            setTimeout(() => setShowCaptureToast(false), 4000);
+        }
     }
   };
 
@@ -52,8 +61,10 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
       text: "This is anonymized demo imaging from a public DICOM server. I’m a radiology teaching assistant: I can explain anatomy, help you describe what you see, and surface guideline snippets for learning — never real diagnoses, reports, or treatment decisions."
     }]);
     setAttachedScreenshot(null);
+    setCapturedSliceInfo(null);
     setInput('');
     setSuggestedFollowups(SUGGESTED_FOLLOWUPS);
+    setShowCaptureToast(false);
   };
 
   const handleSendMessage = async (text: string = input) => {
@@ -122,8 +133,18 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
     setIsThinking(false);
   };
 
+  const getThinkingLevelLabel = () => {
+      switch(mode) {
+          case 'chat': return 'Low';
+          case 'deep_think': return 'High';
+          case 'search': return 'High';
+          default: return 'Low';
+      }
+  };
+
   return (
     <div className="flex flex-col h-full bg-slate-950">
+      {/* Main Header */}
       <div className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2 text-slate-100 font-bold">
           <Sparkles className="w-4 h-4 text-purple-400" /> <span>AI Assistant</span>
@@ -136,8 +157,33 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
             <Trash2 className="w-4 h-4" />
         </button>
       </div>
-      <div className="bg-purple-900/10 border-b border-purple-900/20 p-2 flex-shrink-0">
-          <p className="text-[10px] text-purple-200 opacity-70 text-center">Ask Gemini about this slice. Educational only.</p>
+      
+      {/* Status Bar */}
+      <div className="bg-slate-900/50 border-b border-slate-800 p-2 flex items-center justify-between text-[10px] flex-shrink-0">
+          <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1 text-slate-400">
+                  <span className="font-bold text-slate-500 uppercase">Mode:</span>
+                  <span className="text-purple-300 font-medium capitalize">{mode.replace('_', ' ')}</span>
+              </div>
+              <div className="w-px h-3 bg-slate-700"></div>
+              <div className="flex items-center gap-1 text-slate-400">
+                  <BrainCircuit className="w-3 h-3 text-slate-600" />
+                  <span>Thinking: <span className="text-slate-200">{getThinkingLevelLabel()}</span></span>
+              </div>
+          </div>
+          <div className="flex items-center gap-1">
+               {attachedScreenshot ? (
+                   <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                       <ImageIcon className="w-3 h-3" />
+                       Active {capturedSliceInfo && `(Slice ${capturedSliceInfo.slice})`}
+                   </span>
+               ) : (
+                   <span className="flex items-center gap-1 text-slate-600">
+                       <ImageIcon className="w-3 h-3" />
+                       No image context
+                   </span>
+               )}
+          </div>
       </div>
 
       <div className="flex-1 overflow-hidden relative flex flex-col">
@@ -174,29 +220,37 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
             )}
         </div>
 
+        {/* Capture Toast */}
+        {showCaptureToast && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-emerald-900/90 text-emerald-100 px-4 py-2 rounded-full shadow-xl border border-emerald-500/50 flex items-center gap-2 text-xs z-20 animate-in slide-in-from-top-4 fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>Captured slice. All AI modes will now see this image.</span>
+            </div>
+        )}
+
         <div className="p-4 bg-slate-900 border-t border-slate-800 flex-shrink-0">
             {/* Mode Selection */}
             <div className="flex gap-2 justify-center mb-4">
                 <button 
                   onClick={() => setMode('chat')} 
-                  title="Fast text chat, optionally using the last captured slice if you click the camera."
+                  title="Fast text chat, optionally using the last captured slice."
                   className={`px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'chat' ? 'bg-slate-700 border-slate-500 text-white' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}
                 >
-                  Chat (Gemini 3 • low thinking)
+                  Chat (Low Thinking)
                 </button>
                 <button 
                   onClick={() => setMode('deep_think')} 
-                  title="Slow, structured teaching for the last captured slice."
+                  title="Structured teaching for the last captured slice."
                   className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'deep_think' ? 'bg-purple-900/50 border-purple-500 text-purple-200' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}
                 >
-                  <BrainCircuit className="w-3 h-3" /> Deep Think (Gemini 3 • high thinking)
+                  <BrainCircuit className="w-3 h-3" /> Deep Think (High)
                 </button>
                 <button 
                   onClick={() => setMode('search')} 
-                  title="High-reasoning answers grounded by Google Search, using the last captured slice if provided."
+                  title="High-reasoning answers grounded by Google Search."
                   className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'search' ? 'bg-blue-900/50 border-blue-500 text-blue-200' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}
                 >
-                  <Globe className="w-3 h-3" /> Search (Gemini 3 + web)
+                  <Globe className="w-3 h-3" /> Search (High)
                 </button>
             </div>
 
@@ -204,22 +258,26 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
             {attachedScreenshot && (
                 <div className="relative inline-block border border-purple-500 rounded overflow-hidden shadow-lg group mb-3">
                     <img src={attachedScreenshot} alt="Snapshot" className="h-16 w-auto opacity-80 group-hover:opacity-100 transition-opacity" />
-                    <button onClick={() => setAttachedScreenshot(null)} className="absolute top-0 right-0 bg-black/50 hover:bg-red-500 text-white p-0.5"><X className="w-3 h-3" /></button>
-                    <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[9px] text-white px-1 text-center">Context Active</div>
+                    <button onClick={() => { setAttachedScreenshot(null); setCapturedSliceInfo(null); }} className="absolute top-0 right-0 bg-black/50 hover:bg-red-500 text-white p-0.5"><X className="w-3 h-3" /></button>
+                    <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[9px] text-white px-1 text-center truncate">
+                        {capturedSliceInfo ? `Slice ${capturedSliceInfo.slice}` : 'Captured'}
+                    </div>
                 </div>
             )}
 
             {/* Input Area */}
             <div className="relative flex gap-3 items-center">
-                <button 
-                    onClick={handleCapture} 
-                    disabled={!onCaptureScreen} 
-                    title="Capture current slice as context"
-                    aria-label="Capture current slice as context"
-                    className={`p-2.5 rounded-lg border transition-all ${attachedScreenshot ? 'bg-purple-900 border-purple-500 text-white ring-2 ring-purple-500/50' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'}`}
-                >
-                    <Camera className="w-5 h-5" />
-                </button>
+                <div className="relative group">
+                    <button 
+                        onClick={handleCapture} 
+                        disabled={!onCaptureScreen} 
+                        title="Capture current slice as context"
+                        aria-label="Capture current slice as context"
+                        className={`p-2.5 rounded-lg border transition-all ${attachedScreenshot ? 'bg-purple-900 border-purple-500 text-white ring-2 ring-purple-500/50' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'}`}
+                    >
+                        <Camera className="w-5 h-5" />
+                    </button>
+                </div>
                 
                 <div className="relative flex-1">
                     <input 
@@ -241,11 +299,10 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
             </div>
 
             {/* Helper Tip */}
-            {!attachedScreenshot && (
-                <div className="mt-3 text-[10px] text-slate-500 text-center">
-                    Tip: Use the camera to send the current slice to the AI.
-                </div>
-            )}
+            <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-slate-500">
+                <Zap className="w-3 h-3 text-yellow-600" />
+                <span>Gemini 3 only sees the image after you click <strong className="text-slate-400">Capture 📸</strong>.</span>
+            </div>
         </div>
       </div>
     </div>
