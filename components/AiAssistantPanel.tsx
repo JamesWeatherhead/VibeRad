@@ -281,12 +281,12 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
       
       {/* Status Bar */}
       <div className="bg-slate-900/50 border-b border-slate-800 p-2 flex items-center justify-between text-[10px] flex-shrink-0">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
               <div className="flex items-center gap-1 text-slate-400">
                   <span className="font-bold text-slate-500 uppercase">Mode:</span>
                   <span className="text-purple-300 font-medium capitalize">{mode.replace('_', ' ')}</span>
               </div>
-              <div className="w-px h-3 bg-slate-700"></div>
+              <span className="text-slate-700">•</span>
               <div className="flex items-center gap-1 text-slate-400">
                   <BrainCircuit className="w-3 h-3 text-slate-600" />
                   <span>Thinking: <span className="text-slate-200">{getThinkingLevelLabel()}</span></span>
@@ -385,24 +385,24 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             <div className="flex gap-2 justify-center mb-4">
                 <button 
                   onClick={() => setMode('chat')} 
-                  title="Fast text chat, optionally using the last captured slice."
+                  title="Chat mode – Gemini 3 Pro with low thinking level for fast Q&A."
                   className={`px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'chat' ? 'bg-slate-700 border-slate-500 text-white' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}
                 >
-                  Chat (Low Thinking)
+                  Chat
                 </button>
                 <button 
                   onClick={() => setMode('deep_think')} 
-                  title="Structured teaching for the last captured slice."
+                  title="Deep Think – Gemini 3 Pro with high thinking level for structured teaching."
                   className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'deep_think' ? 'bg-purple-900/50 border-purple-500 text-purple-200' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}
                 >
-                  <BrainCircuit className="w-3 h-3" /> Deep Think (High)
+                  <BrainCircuit className="w-3 h-3" /> Deep Think
                 </button>
                 <button 
                   onClick={() => setMode('search')} 
-                  title="High-reasoning answers grounded by Google Search."
+                  title="Search – Gemini 3 Pro with high thinking + Google Search grounding."
                   className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-medium border transition-colors ${mode === 'search' ? 'bg-blue-900/50 border-blue-500 text-blue-200' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}
                 >
-                  <Globe className="w-3 h-3" /> Search (High)
+                  <Globe className="w-3 h-3" /> Search
                 </button>
             </div>
 
