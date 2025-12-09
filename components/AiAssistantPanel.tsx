@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, MessageSquarePlus } from 'lucide-react';
+import { Bot, Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, MessageSquarePlus, Trash2 } from 'lucide-react';
 import { streamChatResponse } from '../services/aiService';
 import { ChatMessage, CursorContext } from '../types';
 import { MarkdownText } from '../utils/markdownUtils';
@@ -40,6 +40,16 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
         const screenshot = onCaptureScreen();
         if (screenshot) setAttachedScreenshot(screenshot);
     }
+  };
+
+  const handleClearChat = () => {
+    setMessages([{ 
+      id: 'welcome', 
+      role: 'model', 
+      text: "This is anonymized demo imaging from a public DICOM server. I’m a radiology teaching assistant: I can explain anatomy, help you describe what you see, and surface guideline snippets for learning — never real diagnoses, reports, or treatment decisions."
+    }]);
+    setAttachedScreenshot(null);
+    setInput('');
   };
 
   const handleSendMessage = async (text: string = input) => {
@@ -99,6 +109,13 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({ onCaptureScreen, st
         <div className="flex items-center gap-2 text-slate-100 font-bold">
           <Sparkles className="w-4 h-4 text-purple-400" /> <span>AI Assistant</span>
         </div>
+        <button 
+            onClick={handleClearChat} 
+            className="p-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 transition-colors"
+            title="Clear Chat / New Conversation"
+        >
+            <Trash2 className="w-4 h-4" />
+        </button>
       </div>
       <div className="bg-purple-900/10 border-b border-purple-900/20 p-2 flex-shrink-0">
           <p className="text-[10px] text-purple-200 opacity-70 text-center">Ask Gemini about this slice. Educational only.</p>

@@ -301,40 +301,35 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="flex-1 overflow-hidden relative">
-                     {activeRightTab === 'measure' && (
-                         <div className="absolute inset-0">
-                             <MeasurementPanel 
-                                measurements={measurements}
-                                activeMeasurementId={activeMeasurementId}
-                                onSelect={setActiveMeasurementId}
-                                onUpdate={handleMeasurementUpdate}
-                                onDelete={handleMeasurementDelete}
-                                onJumpToSlice={setSliceIndex}
-                                studyMetadata={{ studyId: selectedStudy.id, patientName: selectedStudy.patientName, description: selectedStudy.description, modality: selectedStudy.modality }}
-                              />
-                         </div>
-                     )}
-                     {activeRightTab === 'segment' && (
-                         <div className="absolute inset-0">
-                             <SegmentationPanel 
-                                layer={segmentationLayer} 
-                                onChange={setSegmentationLayer} 
-                                activeTool={activeTool} 
-                                onSelectTool={setActiveTool}
-                                onClearSegment={handleClearSegment} 
-                             />
-                         </div>
-                     )}
-                     {activeRightTab === 'ai' && (
-                         <div className="absolute inset-0">
-                             <AiAssistantPanel 
-                                onCaptureScreen={handleCaptureScreen}
-                                studyMetadata={{ studyId: selectedStudy.id, patientName: selectedStudy.patientName, description: selectedStudy.description, modality: selectedStudy.modality }}
-                                cursor={{ seriesInstanceUID: activeSeries?.id || '', frameIndex: sliceIndex, activeMeasurementId: activeMeasurementId }}
-                                onJumpToSlice={setSliceIndex}
-                             />
-                         </div>
-                     )}
+                     {/* Keep all panels mounted to preserve state (especially AI chat) */}
+                     <div className={`absolute inset-0 w-full h-full bg-slate-950 ${activeRightTab === 'measure' ? 'block z-10' : 'hidden'}`}>
+                         <MeasurementPanel 
+                            measurements={measurements}
+                            activeMeasurementId={activeMeasurementId}
+                            onSelect={setActiveMeasurementId}
+                            onUpdate={handleMeasurementUpdate}
+                            onDelete={handleMeasurementDelete}
+                            onJumpToSlice={setSliceIndex}
+                            studyMetadata={{ studyId: selectedStudy.id, patientName: selectedStudy.patientName, description: selectedStudy.description, modality: selectedStudy.modality }}
+                          />
+                     </div>
+                     <div className={`absolute inset-0 w-full h-full bg-slate-950 ${activeRightTab === 'segment' ? 'block z-10' : 'hidden'}`}>
+                         <SegmentationPanel 
+                            layer={segmentationLayer} 
+                            onChange={setSegmentationLayer} 
+                            activeTool={activeTool} 
+                            onSelectTool={setActiveTool}
+                            onClearSegment={handleClearSegment} 
+                         />
+                     </div>
+                     <div className={`absolute inset-0 w-full h-full bg-slate-950 ${activeRightTab === 'ai' ? 'block z-10' : 'hidden'}`}>
+                         <AiAssistantPanel 
+                            onCaptureScreen={handleCaptureScreen}
+                            studyMetadata={{ studyId: selectedStudy.id, patientName: selectedStudy.patientName, description: selectedStudy.description, modality: selectedStudy.modality }}
+                            cursor={{ seriesInstanceUID: activeSeries?.id || '', frameIndex: sliceIndex, activeMeasurementId: activeMeasurementId }}
+                            onJumpToSlice={setSliceIndex}
+                         />
+                     </div>
                   </div>
               </div>
           </div>
