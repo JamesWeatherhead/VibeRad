@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import StudyList from './components/StudyList';
 import ViewerCanvas from './components/ViewerCanvas';
 import SeriesSelector from './components/SeriesSelector';
@@ -7,6 +7,7 @@ import SegmentationPanel from './components/SegmentationPanel';
 import AiAssistantPanel from './components/AiAssistantPanel';
 import SafetyModal from './components/SafetyModal';
 import GuidedTour from './components/GuidedTour';
+import FloatingToolbar from './components/FloatingToolbar';
 import { TOOLS, MOCK_SEGMENTATION_DATA } from './constants';
 import { Study, Series, ToolMode, ConnectionType, DicomWebConfig, Measurement, SegmentationLayer, ViewerHandle } from './types';
 import { fetchDicomWebSeries, searchDicomWebStudies } from './services/dicomService';
@@ -53,6 +54,92 @@ const App: React.FC = () => {
   
   // Tour State
   const [isTourOpen, setIsTourOpen] = useState(false);
+
+  // Floating Toolbar State
+  const [showLegacyToolbar, setShowLegacyToolbar] = useState(false);
+  const [toolbarPos, setToolbarPos] = useState({ x: 0, y: 0 }); 
+  const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
+  const [toolbarOrientation, setToolbarOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
+  const dragStartRef = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number } | null>(null);
+  const viewerContainerRef = useRef<HTMLDivElement>(null);
+
+  // Center toolbar initially
+  useLayoutEffect(() => {
+    if (viewerContainerRef.current) {
+        const { clientWidth } = viewerContainerRef.current;
+        // Approx center, slightly down from top
+        setToolbarPos({ x: (clientWidth / 2) - 240, y: 24 });
+        setToolbarOrientation('horizontal');
+    }
+  }, [selectedStudy]); // Re-center when study loads
+
+  // Toolbar Drag Logic
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+        if (!isDraggingToolbar || !dragStartRef.current || !viewerContainerRef.current) return;
+        
+        const deltaX = e.clientX - dragStartRef.current.mouseX;
+        const deltaY = e.clientY - dragStartRef.current.mouseY;
+        
+        // Calculate intended raw position
+        let newX = dragStartRef.current.startX + deltaX;
+        let newY = dragStartRef.current.startY + deltaY;
+        
+        const { clientWidth, clientHeight } = viewerContainerRef.current;
+        
+        // Edge Docking Logic
+        const EDGE_THRESHOLD = 56;
+        const PADDING = 16;
+        
+        let intendedOrientation: 'horizontal' | 'vertical' = 'horizontal';
+
+        // Check if docked to left edge
+        if (newX <= EDGE_THRESHOLD) {
+            intendedOrientation = 'vertical';
+            newX = PADDING; // Snap to left edge padding
+        } else {
+            intendedOrientation = 'horizontal';
+        }
+
+        // Determine dimensions based on orientation for clamping
+        // Horizontal: ~460w x 80h (including padding/shadow)
+        // Vertical: ~80w x 460h
+        const tbW = intendedOrientation === 'horizontal' ? 460 : 80;
+        const tbH = intendedOrientation === 'horizontal' ? 80 : 460;
+        
+        // Constrain to container
+        newX = Math.max(0, Math.min(newX, clientWidth - tbW));
+        newY = Math.max(0, Math.min(newY, clientHeight - tbH));
+        
+        setToolbarPos({ x: newX, y: newY });
+        setToolbarOrientation(intendedOrientation);
+    };
+
+    const handleMouseUp = () => {
+        setIsDraggingToolbar(false);
+        dragStartRef.current = null;
+    };
+
+    if (isDraggingToolbar) {
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingToolbar]);
+
+  const handleToolbarDragStart = (e: React.MouseEvent) => {
+      e.preventDefault();
+      setIsDraggingToolbar(true);
+      dragStartRef.current = {
+          mouseX: e.clientX,
+          mouseY: e.clientY,
+          startX: toolbarPos.x,
+          startY: toolbarPos.y
+      };
+  };
 
   // Robust Auto-boot logic
   useEffect(() => {
@@ -274,12 +361,40 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen bg-black text-gray-200 font-sans overflow-hidden flex-col">
-      {/* Top Safety Bar */}
-      <div className="h-6 bg-indigo-950 flex items-center justify-center gap-2 px-4 text-[10px] font-medium text-indigo-200 border-b border-indigo-900/50 flex-shrink-0 z-50">
-         <Shield className="w-3 h-3 text-indigo-400" />
-         <span>VibeRad · Educational Demo Only · Not for Clinical Use</span>
-         <button onClick={() => setShowSafetyModal(true)} className="ml-2 underline hover:text-white">Safety & Privacy</button>
-      </div>
+      {/* Top Main Header */}
+      <header className="w-full bg-slate-950 border-b border-slate-800 flex-shrink-0 relative z-30">
+        <div className="mx-auto flex items-center justify-between px-4 h-14">
+          {/* Left: Branding */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-600 shadow-lg shadow-indigo-500/20">
+              <span className="text-xs font-black tracking-tighter text-white">VR</span>
+            </div>
+            <div className="flex flex-col leading-none">
+              <span className="text-sm font-bold text-slate-100 tracking-tight">VibeRad</span>
+              <span className="text-[9px] text-slate-400 font-medium tracking-wide mt-0.5">
+                RADIOLOGY TEACHING
+              </span>
+            </div>
+          </div>
+
+          {/* Center: Disclaimer Pill */}
+          <div className="hidden md:flex items-center justify-center text-[10px] font-medium text-slate-500 gap-2 bg-slate-900/50 px-3 py-1.5 rounded-full border border-slate-800">
+            <Shield className="w-3 h-3 text-amber-500/80" />
+            <span>Educational Demo Only</span>
+            <span className="text-slate-700">•</span>
+            <span>Not for Clinical Use</span>
+          </div>
+
+          {/* Right: Safety Action */}
+          <button
+            onClick={() => setShowSafetyModal(true)}
+            className="text-[11px] font-medium text-slate-400 hover:text-indigo-300 transition-colors flex items-center gap-1.5"
+          >
+            <Shield className="w-3.5 h-3.5" />
+            <span className="underline underline-offset-2 decoration-slate-700 hover:decoration-indigo-500/50">Safety &amp; Privacy</span>
+          </button>
+        </div>
+      </header>
 
       {showSafetyModal && <SafetyModal onClose={() => setShowSafetyModal(false)} />}
       
@@ -312,49 +427,62 @@ const App: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className="h-14 bg-gray-900 border-b border-gray-800 flex items-center justify-center px-4 flex-shrink-0 z-20">
-              {/* Center Tools */}
-              <div className="flex items-center justify-center gap-3">
-                {/* Capture Button - Tour Anchor */}
-                <button
-                    id="tour-capture-button" // tour anchor
-                    data-tour-id="capture"
-                    aria-label="Capture slice for AI assistant"
-                    onClick={performGlobalCapture}
-                    className="p-2 rounded-md flex flex-col items-center justify-center w-24 transition-all text-gray-400 hover:bg-gray-800 hover:text-gray-200 group"
-                    title="Capture current slice"
-                >
-                    <Camera className="w-5 h-5 mb-1 group-hover:text-white" />
-                    <span className="text-[9px] uppercase font-bold tracking-wider whitespace-nowrap">Capture</span>
-                </button>
-                
-                {/* Divider */}
-                <div className="w-px h-8 bg-gray-800/50 mx-1" />
+          {showLegacyToolbar && (
+            <div className="h-14 bg-gray-900 border-b border-gray-800 flex items-center justify-center px-4 flex-shrink-0 z-20">
+                {/* Center Tools */}
+                <div className="flex items-center justify-center gap-3">
+                  {/* Capture Button - Tour Anchor */}
+                  <button
+                      id="tour-capture-button-legacy" 
+                      aria-label="Capture slice for AI assistant"
+                      onClick={performGlobalCapture}
+                      className="p-2 rounded-md flex flex-col items-center justify-center w-24 transition-all text-gray-400 hover:bg-gray-800 hover:text-gray-200 group"
+                      title="Capture current slice"
+                  >
+                      <Camera className="w-5 h-5 mb-1 group-hover:text-white" />
+                      <span className="text-[9px] uppercase font-bold tracking-wider whitespace-nowrap">Capture</span>
+                  </button>
+                  
+                  {/* Divider */}
+                  <div className="w-px h-8 bg-gray-800/50 mx-1" />
 
-                {TOOLS.map((tool) => {
-                  const Icon = tool.icon;
-                  const isActive = activeTool === tool.id;
-                  return (
-                    <button
-                      key={tool.id}
-                      onClick={() => setActiveTool(tool.id)}
-                      className={`p-2 rounded-md flex flex-col items-center justify-center w-24 transition-all ${
-                        isActive 
-                          ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50 transform scale-105 z-10' 
-                          : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-                      }`}
-                      title={tool.label}
-                    >
-                      <Icon className="w-5 h-5 mb-1" />
-                      <span className="text-[9px] uppercase font-bold tracking-wider whitespace-nowrap">{tool.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-          </div>
+                  {TOOLS.map((tool) => {
+                    const Icon = tool.icon;
+                    const isActive = activeTool === tool.id;
+                    return (
+                      <button
+                        key={tool.id}
+                        onClick={() => setActiveTool(tool.id)}
+                        className={`p-2 rounded-md flex flex-col items-center justify-center w-24 transition-all ${
+                          isActive 
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50 transform scale-105 z-10' 
+                            : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                        }`}
+                        title={tool.label}
+                      >
+                        <Icon className="w-5 h-5 mb-1" />
+                        <span className="text-[9px] uppercase font-bold tracking-wider whitespace-nowrap">{tool.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+            </div>
+          )}
 
           <div className="flex-1 flex overflow-hidden">
-              <div className="flex-1 flex flex-col relative min-w-0">
+              <div 
+                ref={viewerContainerRef}
+                className="flex-1 flex flex-col relative min-w-0"
+              >
+                  <FloatingToolbar 
+                    activeTool={activeTool}
+                    onSelectTool={setActiveTool}
+                    onCapture={performGlobalCapture}
+                    position={toolbarPos}
+                    onDragStart={handleToolbarDragStart}
+                    orientation={toolbarOrientation}
+                  />
+
                   <ViewerCanvas 
                     ref={viewerRef}
                     series={activeSeries} 
