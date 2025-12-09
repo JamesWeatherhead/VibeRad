@@ -96,21 +96,30 @@ const App: React.FC = () => {
         // Edge Docking Logic
         const EDGE_THRESHOLD = 56;
         const PADDING = 16;
+        const TB_WIDTH_HORIZONTAL = 460;
+        const TB_WIDTH_VERTICAL = 80;
+        
+        // Use orientation at drag start (captured in closure) to determine active width for hit testing
+        const startWidth = toolbarOrientation === 'horizontal' ? TB_WIDTH_HORIZONTAL : TB_WIDTH_VERTICAL;
         
         let intendedOrientation: 'horizontal' | 'vertical' = 'horizontal';
 
         // Check if docked to left edge
         if (newX <= EDGE_THRESHOLD) {
             intendedOrientation = 'vertical';
-            newX = PADDING; // Snap to left edge padding
-        } else {
+            newX = PADDING; 
+        } 
+        // Check if docked to right edge (considering the right edge of the bar)
+        else if (newX + startWidth >= clientWidth - EDGE_THRESHOLD) {
+            intendedOrientation = 'vertical';
+            newX = clientWidth - TB_WIDTH_VERTICAL - PADDING;
+        }
+        else {
             intendedOrientation = 'horizontal';
         }
 
-        // Determine dimensions based on orientation for clamping
-        // Horizontal: ~460w x 80h (including padding/shadow)
-        // Vertical: ~80w x 460h
-        const tbW = intendedOrientation === 'horizontal' ? 460 : 80;
+        // Determine dimensions based on intended orientation for clamping
+        const tbW = intendedOrientation === 'horizontal' ? TB_WIDTH_HORIZONTAL : TB_WIDTH_VERTICAL;
         const tbH = intendedOrientation === 'horizontal' ? 80 : 460;
         
         // Constrain to container
