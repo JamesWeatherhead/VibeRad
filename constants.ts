@@ -43,6 +43,10 @@ export const MOCK_SEGMENTATION_DATA: Segment[] = [
 ];
 
 export const SERIES_DESCRIPTIONS: Record<string, string> = {
+  "T1 Weighted": "Basic anatomy view. Fluid is dark, fat is bright.",
+  "FLAIR": "Suppresses fluid signal. Great for seeing swelling/edema.",
+  "ADC Map": "Apparent Diffusion Coefficient. Shows true restricted diffusion.",
+  "DWI Trace": "Diffusion Weighted Imaging. Highlights acute stroke/ischemia.",
   "ST2W/FLAIR": "Good at showing brain swelling and old scars.",
   "sT2W/FLAIR": "Good at showing brain swelling and old scars.",
   "T2W/FE-EPI": "Helps pick up small or hidden areas of bleeding.",

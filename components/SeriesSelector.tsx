@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Series, DicomWebConfig } from '../types';
 import { Layers, Loader2 } from 'lucide-react';
@@ -54,22 +56,20 @@ const SeriesThumbnail: React.FC<SeriesThumbnailProps> = ({ series, isActive, onC
   const loadRobustThumbnail = async () => {
     if (!series.instances || series.instances.length === 0) return;
 
-    const maxRetries = 3;
-    const usedIndices = new Set<number>();
-    let attempts = 0;
+    // DETERMINE DEFAULT SLICE INDEX
+    // Logic must match App.tsx useEffect for default slice selection
+    let targetIndex = Math.floor(series.instanceCount / 2);
+    // Safety clamp
+    targetIndex = Math.max(0, Math.min(series.instanceCount - 1, targetIndex));
+
+    const indicesToTry = [targetIndex];
+    // Add fallback indices if the default fails (e.g. neighboring slices)
+    if (targetIndex + 1 < series.instanceCount) indicesToTry.push(targetIndex + 1);
+    if (targetIndex - 1 >= 0) indicesToTry.push(targetIndex - 1);
+
     let success = false;
 
-    // Try up to maxRetries unique random images
-    while (attempts < maxRetries && usedIndices.size < series.instances.length) {
-       // Pick a random index
-       let idx = Math.floor(Math.random() * series.instances.length);
-       
-       // Ensure we haven't tried this one yet
-       while (usedIndices.has(idx) && usedIndices.size < series.instances.length) {
-          idx = Math.floor(Math.random() * series.instances.length);
-       }
-       usedIndices.add(idx);
-
+    for (const idx of indicesToTry) {
        try {
           const url = series.instances[idx];
           // Use the robust fetch service that handles headers/proxies/fallbacks
@@ -80,12 +80,11 @@ const SeriesThumbnail: React.FC<SeriesThumbnailProps> = ({ series, isActive, onC
              setThumbUrl(objectUrl);
              setIsLoading(false);
              success = true;
-             return;
+             return; // Stop after first success
           }
        } catch (e) {
-          // console.warn(`Failed to load thumbnail for series ${series.id} (attempt ${attempts + 1})`);
+          // Continue to next index
        }
-       attempts++;
     }
 
     if (!success && isMounted.current) {

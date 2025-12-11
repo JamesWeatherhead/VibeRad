@@ -1,7 +1,9 @@
+
+
 import React, { useState } from 'react';
 import { 
   Activity, Shield, ArrowRight, Bot, 
-  MousePointer2, Globe
+  MousePointer2, Globe, GraduationCap, Sparkles
 } from 'lucide-react';
 
 interface IntroScreenProps {
@@ -72,11 +74,12 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStartDemo }) => {
 
         {/* Right Column: Copy & Actions */}
         <div className="p-8 md:p-12 flex flex-col justify-center bg-slate-900">
-            <div className="flex items-center gap-2 mb-6">
-                <div className="p-1.5 bg-indigo-500/10 rounded border border-indigo-500/20">
-                    <Activity className="w-5 h-5 text-indigo-400" />
-                </div>
-                <span className="text-sm font-bold tracking-wide text-slate-400 uppercase">VibeRad</span>
+            {/* New Branding Lockup */}
+            <div className="flex flex-col mb-6">
+              <span className="text-xl font-bold text-slate-100 tracking-tight leading-none">VibeRad</span>
+              <span className="text-xs font-medium text-indigo-300 tracking-wide mt-1">
+                Gemini 3 Pro–Powered MRI Tutor
+              </span>
             </div>
 
             <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 tracking-tight">
@@ -91,7 +94,7 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStartDemo }) => {
                     VibeRad is an AI Studio DICOM app that leverages Gemini 3 Pro’s advanced reasoning and native multimodality.
                 </p>
                 <p>
-                    This demo uses public, anonymized DICOM data (Orthanc) and is strictly for educational purposes.
+                    This demo uses public, anonymized DICOM data and is strictly for educational purposes.
                 </p>
             </div>
 
@@ -117,7 +120,7 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStartDemo }) => {
                     onClick={onStartDemo}
                     className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 px-4 rounded-lg shadow-lg shadow-indigo-900/20 transition-all flex items-center justify-center gap-2 group border border-indigo-500"
                 >
-                    Start Demo with Orthanc
+                    Start Demo
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                 </button>
                 
@@ -139,8 +142,8 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStartDemo }) => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
            <div className="bg-slate-900 border border-slate-700 max-w-md w-full rounded-xl p-6 shadow-2xl">
               <div className="flex items-center gap-3 mb-5 border-b border-slate-800 pb-4">
-                 <div className="p-2 bg-amber-500/10 rounded-lg">
-                    <Shield className="w-5 h-5 text-amber-500" />
+                 <div className="p-2 bg-indigo-500/10 rounded-lg">
+                    <GraduationCap className="w-5 h-5 text-indigo-400" />
                  </div>
                  <h3 className="text-lg font-bold text-white">Safety Information</h3>
               </div>

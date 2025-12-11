@@ -30,9 +30,6 @@ export type ConnectionType = 'DEMO' | 'DICOMWEB' | null;
 export interface DicomWebConfig {
   url: string;
   name: string;
-  qidoPrefix?: string;
-  wadoPrefix?: string;
-  useCorsProxy?: boolean;
 }
 
 // Diagnostics

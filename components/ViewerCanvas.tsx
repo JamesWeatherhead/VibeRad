@@ -1,7 +1,8 @@
+
 import React, { useRef, useEffect, useLayoutEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import { Series, ToolMode, ViewportState, Point, Measurement, DicomWebConfig, SegmentationLayer, ViewerHandle, Segment } from '../types';
 import { DEFAULT_VIEWPORT_STATE } from '../constants';
-import { fetchDicomImageBlob } from '../services/dicomService';
+import { fetchDicomImageBlob, prefetchImage } from '../services/dicomService';
 import { Loader2, AlertTriangle, Move } from 'lucide-react';
 
 interface ViewerCanvasProps {
@@ -21,6 +22,9 @@ interface ViewerCanvasProps {
 
   segmentationLayer: SegmentationLayer;
   onSegmentedSliceUpdate?: (sliceIndex: number, labelCount: number) => void;
+
+  // New Prop: Enforce scrolling restrictions (e.g. for guided tour)
+  isScrollEnabled?: boolean;
 }
 
 const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({ 
@@ -35,7 +39,8 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   onMeasurementUpdate,
   activeMeasurementId,
   segmentationLayer,
-  onSegmentedSliceUpdate
+  onSegmentedSliceUpdate,
+  isScrollEnabled = true // Default to enabled
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -146,7 +151,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
     }
   }));
 
-  // --- HELPER FUNCTIONS (Defined before usage) ---
+  // --- HELPER FUNCTIONS ---
 
   const getRenderCanvas = (sliceIdx: number, w: number, h: number, segments: Segment[]) => {
       const caches = getSeriesCaches();
@@ -278,7 +283,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   };
 
   // --- MAIN RENDER FUNCTION ---
-  // Extracted to allow synchronous calling from paint events
   const renderScene = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -294,9 +298,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
     ctx.save();
     
     // Transform
-    // Centering: (CanvasWidth / 2) + PanX
-    // This logic automatically keeps the image centered when canvas resizes,
-    // as canvas.width / 2 updates with the container.
     ctx.translate(canvas.width / 2 + viewport.pan.x, canvas.height / 2 + viewport.pan.y);
     ctx.scale(viewport.scale, viewport.scale);
     
@@ -314,6 +315,10 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
     // --- MEASUREMENT LAYER RENDERING ---
     const sliceMeasurements = measurements.filter(m => m.sliceIndex === sliceIndex);
     
+    // Track occupied label space to resolve overlaps
+    // Stores { x, y, w, h } in world (image) coordinates, but with scale factors accounted for collision
+    const labelBoxes: {x: number, y: number, w: number, h: number}[] = [];
+
     const drawLine = (m: Measurement, isSelected: boolean) => {
       ctx.beginPath();
       ctx.strokeStyle = isSelected ? '#4ade80' : '#fbbf24'; 
@@ -331,12 +336,53 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         ctx.fillStyle = '#fff';
         ctx.shadowColor = 'black';
         ctx.shadowBlur = 4;
-        ctx.font = `bold ${14 / viewport.scale}px monospace`;
+        const fontSize = 14 / viewport.scale;
+        ctx.font = `bold ${fontSize}px monospace`;
+        
         const mx = (m.start.x + m.end.x)/2;
         const my = (m.start.y + m.end.y)/2;
         const val = (m.value * 0.5).toFixed(1);
-        const label = m.label ? `${m.label}: ` : '';
-        ctx.fillText(`${label}${val} mm`, mx + 10, my);
+        const labelText = m.label ? `${m.label}: ` : '';
+        const fullText = `${labelText}${val} mm`;
+        
+        const metrics = ctx.measureText(fullText);
+        const textWidth = metrics.width;
+        
+        // Initial Position (offset by 10 pixels in image space)
+        let textX = mx + 10;
+        let textY = my;
+
+        // Collision Resolution (Move down if overlapping)
+        const padding = 2 / viewport.scale;
+        let attempts = 0;
+        const shiftStep = fontSize + padding;
+
+        while (attempts < 10) {
+            const collision = labelBoxes.some(box => {
+                // AABB Collision Test
+                const l1 = textX;
+                const r1 = textX + textWidth;
+                const t1 = textY - fontSize;
+                const b1 = textY + (fontSize * 0.2); // Descent
+
+                const l2 = box.x;
+                const r2 = box.x + box.w;
+                const t2 = box.y - box.h;
+                const b2 = box.y + (box.h * 0.2);
+                
+                return !(l1 > r2 || r1 < l2 || t1 > b2 || b1 < t2);
+            });
+
+            if (!collision) break;
+            
+            // Shift down
+            textY += shiftStep;
+            attempts++;
+        }
+
+        labelBoxes.push({ x: textX, y: textY, w: textWidth, h: fontSize });
+
+        ctx.fillText(fullText, textX, textY);
         ctx.shadowBlur = 0;
       }
     };
@@ -360,14 +406,12 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         const entry = entries[0];
         const { width, height } = entry.contentRect;
 
-        // Ensure we have valid positive dimensions
         if (width <= 0 || height <= 0) return;
 
         const newW = Math.round(width);
         const newH = Math.round(height);
 
         setCanvasSize((prev) => {
-            // First time: just set size, no pan shift
             if (!lastSizeRef.current) {
                 lastSizeRef.current = { width: newW, height: newH };
                 return { width: newW, height: newH };
@@ -376,15 +420,11 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
             const prevW = lastSizeRef.current.width;
             const prevH = lastSizeRef.current.height;
 
-            if (prevW === newW && prevH === newH) {
-                return prev;
-            }
+            if (prevW === newW && prevH === newH) return prev;
 
-            // Compute how much the center moved
             const deltaX = (newW - prevW) / 2;
             const deltaY = (newH - prevH) / 2;
 
-            // Shift pan so the same image area stays centered
             setViewport((vp) => ({
                 ...vp,
                 pan: {
@@ -416,18 +456,12 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
     if (series) {
       setViewport(DEFAULT_VIEWPORT_STATE);
       setLoadError(null);
-      // DO NOT clear segmentation caches here anymore. They persist per series.
-      
       setRenderTick(0);
       setCurrentImageBitmap(null);
       hasFittedRef.current = false;
 
-      // Restore segmentation UI state for this series
-      // Use setTimeout to skip one tick, allowing parent (App.tsx) to run its cleanup first
       setTimeout(() => {
-        // Guard against series switch race condition
         if (currentSeriesIdRef.current !== series.id) return;
-        
         const caches = getSeriesCaches();
         if (caches && caches.sliceIdsBySlice.size > 0) {
             caches.sliceIdsBySlice.forEach((ids, idx) => {
@@ -438,40 +472,47 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
     }
   }, [series?.id]);
 
-  // Fit to View Logic (Runs once per series load)
+  // Fit to View Logic
   useLayoutEffect(() => {
     if (currentImageBitmap && !hasFittedRef.current && canvasSize.width > 0 && canvasSize.height > 0) {
       const imgW = currentImageBitmap.width || 512;
       const imgH = currentImageBitmap.height || 512;
-      
-      // Safety check for empty image dimensions
       if (imgW === 0 || imgH === 0) return;
 
       const scaleX = canvasSize.width / imgW;
       const scaleY = canvasSize.height / imgH;
-      
-      // 0.95 margin ensures full visibility without touching edges
-      // Add minimum safety clamp to prevent disappearing logic
       const scale = Math.max(0.05, Math.min(scaleX, scaleY) * 0.95);
       
-      setViewport(prev => ({
-        ...prev,
-        scale,
-        pan: { x: 0, y: 0 }
-      }));
-      
+      setViewport(prev => ({ ...prev, scale, pan: { x: 0, y: 0 } }));
       hasFittedRef.current = true;
     }
   }, [currentImageBitmap, canvasSize.width, canvasSize.height]);
 
   // 2. Invalidate Render Cache when Segment Definitions Change
   useEffect(() => {
-    // Clear all visual caches globally since segment definitions (colors) are global
     renderCacheRef.current.forEach(map => map.clear());
     setRenderTick(t => t + 1);
   }, [segmentationLayer.segments]);
 
-  // 3. Fetch Image Data
+  // 3. PERFORMANCE: Intelligent Prefetching
+  // Whenever the sliceIndex changes, we look ahead and behind to start loading neighboring images into the cache.
+  // This makes scrolling feel instantaneous.
+  useEffect(() => {
+    if (!series || !series.instances) return;
+    
+    // Look ahead 5 frames, look behind 2 frames
+    const neighbors = [];
+    for (let i = 1; i <= 5; i++) neighbors.push(sliceIndex + i);
+    for (let i = 1; i <= 2; i++) neighbors.push(sliceIndex - i);
+    
+    neighbors.forEach(idx => {
+        if (idx >= 0 && idx < series.instances.length) {
+            prefetchImage(series.instances[idx]);
+        }
+    });
+  }, [sliceIndex, series]);
+
+  // 4. Fetch Image Data (Current Frame)
   useEffect(() => {
     let active = true;
     let objectUrl: string | null = null;
@@ -489,13 +530,8 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
 
       const url = series.instances[sliceIndex];
       try {
-        let blob: Blob;
-        if (connectionType === 'DEMO') {
-          const resp = await fetch(url);
-          blob = await resp.blob();
-        } else {
-          blob = await fetchDicomImageBlob(dicomConfig, url);
-        }
+        // Fetch Blob (Will use Memory Cache if available)
+        const blob = await fetchDicomImageBlob(dicomConfig, url);
         
         if (!active) return;
 
@@ -528,7 +564,7 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
     };
   }, [series, sliceIndex, connectionType, dicomConfig]);
 
-  // 4. Render Loop (Triggered by state changes, including resize)
+  // 5. Render Loop
   useLayoutEffect(() => {
     renderScene();
   }, [viewport, currentImageBitmap, measurements, activeMeasurementId, draftMeasurement, sliceIndex, segmentationLayer, renderTick, canvasSize]);
@@ -543,7 +579,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      const x = e.clientX - rect.left;
      const y = e.clientY - rect.top;
      
-     // Inverse Transform
      const centeredX = x - canvas.width/2 - viewport.pan.x;
      const centeredY = y - canvas.height/2 - viewport.pan.y;
      return { 
@@ -578,7 +613,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         const isPaintTool = activeTool === ToolMode.BRUSH || activeTool === ToolMode.ERASER;
         if (isPaintTool && segmentationLayer.isVisible && currentImageBitmap) {
             if (activeTool === ToolMode.BRUSH && !segmentationLayer.activeSegmentId) return;
-            
             interactionRef.current.lastDrawPoint = p;
             paintOnMask(p, p);
         }
@@ -596,7 +630,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      const ctxMask = maskCanvas.getContext('2d');
      if (!ctxMask) return;
      
-     // Get the visual canvas
      const visualCanvas = getRenderCanvas(sliceIndex, w, h, segmentationLayer.segments);
      const ctxVisual = visualCanvas?.getContext('2d');
 
@@ -604,7 +637,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
      const size = segmentationLayer.brushSize;
      const segId = segmentationLayer.activeSegmentId;
 
-     // Update Segmentation Tracking (Intent-based, not pixel-based)
      if (!isEraser && segId) {
          const caches = getSeriesCaches();
          if (caches) {
@@ -614,7 +646,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
                  sliceSets = new Set();
                  sliceIdsBySlice.set(sliceIndex, sliceSets);
              }
-             
              if (!sliceSets.has(segId)) {
                  sliceSets.add(segId);
                  onSegmentedSliceUpdate?.(sliceIndex, sliceSets.size);
@@ -641,7 +672,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         } else {
             ctx.globalCompositeOperation = 'source-over';
             if (isMask) {
-                // ID in Red Channel
                 ctx.strokeStyle = `rgb(${segId}, 0, 0)`;
                 ctx.fillStyle = `rgb(${segId}, 0, 0)`; 
             } else {
@@ -653,31 +683,22 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
         ctx.lineTo(p2.x, p2.y);
-        
         const passes = (isMask && !isEraser) ? 8 : 1;
         for (let i = 0; i < passes; i++) ctx.stroke();
 
         ctx.beginPath();
         ctx.arc(p1.x, p1.y, size/2, 0, Math.PI*2);
         ctx.fill();
-        
         ctx.beginPath();
         ctx.arc(p2.x, p2.y, size/2, 0, Math.PI*2);
         ctx.fill();
-        
         ctx.restore();
      };
 
-     // 1. Draw to Data Layer
      drawStroke(ctxMask, true);
-
-     // 2. Draw to Visual Layer
      if (ctxVisual) drawStroke(ctxVisual, false);
-     
-     // 3. FORCE IMMEDIATE RENDER TO SCREEN (Bypasses React State Cycle for smooth lines)
      renderScene();
 
-     // 4. Update Segmentation Count if Erasing
      if (isEraser) {
        recomputeSliceSegments(sliceIndex);
      }
@@ -725,6 +746,9 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
       }));
       interactionRef.current.dragStart = { x: e.clientX, y: e.clientY };
     } else if (activeTool === ToolMode.SCROLL && activeButton === 0) {
+      // SCROLL BLOCKING for drag gesture
+      if (isScrollEnabled === false) return;
+
       if (Math.abs(dy) > 10) {
         const dir = dy > 0 ? 1 : -1;
         const max = series.instances.length || series.instanceCount;
@@ -742,13 +766,10 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
   };
 
   const handleMouseUp = () => {
-    // const wasDragging = interactionRef.current.isDragging;
-    
     interactionRef.current.isDragging = false;
     interactionRef.current.dragStart = null;
     interactionRef.current.lastDrawPoint = null;
     interactionRef.current.activeButton = null;
-    
     setIsDraggingState(false);
 
     if (activeTool === ToolMode.MEASURE && draftMeasurement) {
@@ -773,6 +794,9 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
              scale: Math.max(0.1, Math.min(20, p.scale * zoomFactor) ) 
          }));
      } else {
+        // SCROLL BLOCKING for mouse wheel
+        if (isScrollEnabled === false) return;
+
         const dir = e.deltaY > 0 ? 1 : -1;
         const max = series?.instances.length || series?.instanceCount || 0;
         const next = Math.max(0, Math.min(max - 1, sliceIndex + dir));
@@ -785,18 +809,13 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         const rect = containerRef.current.getBoundingClientRect();
         const newW = Math.round(rect.width);
         const newH = Math.round(rect.height);
-
         setCanvasSize(prev => {
             if (prev.width === newW && prev.height === newH) return prev;
             lastSizeRef.current = { width: newW, height: newH };
             return { width: newW, height: newH };
         });
     }
-
-    setViewport((vp) => ({
-      ...vp,
-      pan: { x: 0, y: 0 },
-    }));
+    setViewport((vp) => ({ ...vp, pan: { x: 0, y: 0 } }));
   };
 
   const getFilterStyle = () => {
@@ -838,7 +857,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         className="block"
       />
       
-      {/* Scrollbar Indicator */}
       <div className="absolute right-2 top-4 bottom-4 w-1.5 bg-gray-800 rounded-full overflow-hidden opacity-50 hover:opacity-100 transition-opacity pointer-events-none">
          <div 
            className="bg-blue-500 w-full rounded-full"
@@ -862,7 +880,6 @@ const ViewerCanvas = forwardRef<ViewerHandle, ViewerCanvasProps>(({
         </div>
       )}
 
-      {/* Info Overlays */}
       <div className="absolute top-4 left-4 text-xs font-mono text-lime-400 pointer-events-none drop-shadow-md">
         <div className="text-sm font-bold text-white mb-1">
           {series.description && series.description !== 'No Description' ? series.description : series.modality}

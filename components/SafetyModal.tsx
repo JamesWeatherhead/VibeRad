@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Shield } from 'lucide-react';
 
@@ -30,7 +31,7 @@ const SafetyModal: React.FC<SafetyModalProps> = ({ onClose }) => {
              </div>
              <div className="flex gap-3">
                 <span className="font-mono text-slate-500 font-bold">04</span>
-                <p><strong>Data Source:</strong> DICOM demo images are streamed from the public Orthanc demo server (demo.orthanc-server.com). No real patient PHI is used.</p>
+                <p><strong>Data Source:</strong> This dataset is CC0 (Public Domain). Chris Rorden, John Absher, and Roger Newman-Norlund (2024). Stroke Outcome Optimization Project (SOOP). OpenNeuro. [Dataset] doi: 10.18112/openneuro.ds004889.v1.1.2. <a href="https://openneuro.org/datasets/ds004889/versions/1.1.2" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 underline break-all">https://openneuro.org/datasets/ds004889/versions/1.1.2</a></p>
              </div>
           </div>
           <button 

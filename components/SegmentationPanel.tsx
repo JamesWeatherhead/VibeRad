@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { SegmentationLayer, Segment, ToolMode } from '../types';
 import {
@@ -10,7 +11,8 @@ import {
   Plus,
   Eraser,
   Layers,
-  Edit2
+  Edit2,
+  HelpCircle
 } from 'lucide-react';
 
 interface SegmentationPanelProps {
@@ -20,6 +22,7 @@ interface SegmentationPanelProps {
   onSelectTool: (tool: ToolMode) => void;
   onClearSegment?: (id: number) => void;
   onJumpToSlice?: (index: number) => void;
+  onStartTour?: () => void;
 }
 
 const componentToHex = (c: number) => {
@@ -37,7 +40,8 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
   activeTool,
   onSelectTool,
   onClearSegment,
-  onJumpToSlice
+  onJumpToSlice,
+  onStartTour
 }) => {
   // New label form state
   const [newLabelName, setNewLabelName] = useState('');
@@ -105,10 +109,19 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
   return (
     <div className="w-full bg-slate-950 border-l border-slate-800 flex flex-col h-full">
       {/* Header */}
-      <div className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between flex-shrink-0">
+      <div data-tour-id="seg-header" className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2 text-slate-100 font-bold">
           <Activity className="w-4 h-4 text-emerald-500" />
           <span>Segmentation</span>
+          {onStartTour && (
+              <button 
+                  onClick={onStartTour}
+                  className="ml-2 text-[10px] text-emerald-300 hover:text-white flex items-center gap-1 transition-colors"
+                  title="Tour the Segmentation panel"
+              >
+                  <HelpCircle className="w-3.5 h-3.5" />
+              </button>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -134,7 +147,7 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
       </div>
 
       {/* Layer Controls */}
-      <div className="p-4 border-b border-slate-800 bg-slate-900/50 space-y-3 flex-shrink-0">
+      <div data-tour-id="seg-controls" className="p-4 border-b border-slate-800 bg-slate-900/50 space-y-3 flex-shrink-0">
         {/* Tool mode buttons */}
         <div className="flex items-center justify-between gap-2">
           <button
@@ -247,7 +260,7 @@ const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
         </div>
 
         {/* Segments Palette */}
-        <div className="px-4 py-2 text-xs font-bold text-slate-500 uppercase bg-slate-950 sticky top-0 border-b border-slate-800 flex flex-col gap-2 mt-2">
+        <div data-tour-id="seg-palette" className="px-4 py-2 text-xs font-bold text-slate-500 uppercase bg-slate-950 sticky top-0 border-b border-slate-800 flex flex-col gap-2 mt-2">
           <div className="flex justify-between items-center">
             <span>Segments Palette</span>
             <span className="text-[10px] text-slate-600 font-normal">

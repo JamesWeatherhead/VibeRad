@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ToolMode } from '../types';
 import { TOOLS } from '../constants';
@@ -26,6 +27,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
 
   return (
     <div
+      data-tour-id="viewer-toolbar"
       className={`absolute z-40 flex items-center bg-slate-900/95 border border-slate-700 rounded-2xl shadow-2xl backdrop-blur-md select-none ${
         // Only apply transition when NOT dragging to avoid lag/rubber-banding
         !isDragging ? 'transition-all duration-200' : ''
@@ -56,8 +58,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
         {/* Capture Button */}
         <button
           onClick={onCapture}
-          id="tour-capture-button"
-          data-tour-id="capture"
+          data-tour-id="capture-button"
           aria-label="Capture slice for AI assistant"
           className={`rounded-xl text-slate-200 bg-slate-800 hover:bg-slate-700 hover:text-white transition-all active:scale-95 group border border-transparent hover:border-slate-600 flex items-center justify-center ${
             isVertical ? 'w-10 h-10' : 'p-2.5'

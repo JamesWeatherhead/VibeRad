@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, Trash2, CheckCircle2, AlertTriangle, RotateCcw, ArrowDown } from 'lucide-react';
+import { Send, Sparkles, Globe, BrainCircuit, X, Camera, ImageIcon, Trash2, CheckCircle2, AlertTriangle, RotateCcw, ArrowDown, HelpCircle } from 'lucide-react';
 import { streamChatResponse, AiMode } from '../services/aiService';
 import { ChatMessage, CursorContext } from '../types';
 import { MarkdownText } from '../utils/markdownUtils';
@@ -25,6 +26,7 @@ interface AiAssistantPanelProps {
     description: string;
     instanceCount: number;
   };
+  onStartTour?: () => void;
 }
 
 const STATIC_SUGGESTIONS_NO_IMAGE: Record<LearnerLevel, string[]> = {
@@ -41,7 +43,7 @@ const STATIC_SUGGESTIONS_NO_IMAGE: Record<LearnerLevel, string[]> = {
     "What normal brain structures should I be able to recognize on every scan?",
   ],
   resident: [
-    "How should I systematically approach brain MRI on call?",
+    "What is a standard systematic search pattern for brain MRI?",
     "What are common pitfalls when reading brain MRI?",
   ],
 };
@@ -87,7 +89,8 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   studyMetadata, 
   cursor, 
   onJumpToSlice, 
-  activeSeriesInfo 
+  activeSeriesInfo,
+  onStartTour
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { 
@@ -356,13 +359,23 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   const hasCapturedImage = !!attachedScreenshot;
 
   return (
-    <div className="flex flex-col h-full bg-slate-950">
+    <div data-tour-id="ai-panel" className="flex flex-col h-full bg-slate-950">
       {/* Main Header */}
       <div className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2 text-slate-100 font-bold">
           <Sparkles className="w-4 h-4 text-purple-400" /> <span>AI Assistant</span>
+          {onStartTour && (
+              <button 
+                  onClick={onStartTour}
+                  className="ml-2 text-[10px] text-purple-300 hover:text-white flex items-center gap-1 transition-colors"
+                  title="Tour the AI tutor"
+              >
+                  <HelpCircle className="w-3.5 h-3.5" />
+              </button>
+          )}
         </div>
         <button 
+            data-tour-id="ai-trash"
             onClick={handleClearChat} 
             className="p-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 transition-colors"
             title="Clear Chat / New Conversation"
@@ -532,7 +545,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
                 )})}
 
                 {!isThinking && currentSuggestions.length > 0 && (
-                    <div className="mt-3 animate-in fade-in duration-300">
+                    <div data-tour-id="ai-suggestions" className="mt-3 animate-in fade-in duration-300">
                         <div className="mb-2 text-[10px] text-slate-500 uppercase font-bold ml-1">
                             Suggested Follow-ups
                         </div>
@@ -610,7 +623,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             )}
             
             {/* New Compact Learner Level Row */}
-            <div className="flex items-center justify-end mb-2 gap-2 text-[11px] text-slate-400">
+            <div data-tour-id="teaching-levels" className="flex items-center justify-end mb-2 gap-2 text-[11px] text-slate-400">
                 <span className="hidden sm:inline text-slate-500 font-medium">Teaching Level:</span>
                 <div className="inline-flex rounded-lg bg-slate-950/50 border border-slate-700/50 p-0.5 gap-0.5">
                     {LEARNER_LEVELS.map(level => (
@@ -668,7 +681,7 @@ const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             </div>
 
             {/* Dynamic Status / Hint Footer */}
-            <div className="mt-2 text-[11px] text-slate-400 leading-tight min-h-[20px] flex items-center justify-between">
+            <div data-tour-id="image-status" className="mt-2 text-[11px] text-slate-400 leading-tight min-h-[20px] flex items-center justify-between">
                 {isThinking ? (
                     <div className="w-full flex items-center justify-between bg-purple-900/10 border border-purple-500/20 rounded-lg px-3 py-2 animate-in fade-in">
                         <div className="flex items-center gap-2.5">

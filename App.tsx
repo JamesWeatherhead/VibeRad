@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import StudyList from './components/StudyList';
 import ViewerCanvas from './components/ViewerCanvas';
@@ -6,31 +8,32 @@ import MeasurementPanel from './components/MeasurementPanel';
 import SegmentationPanel from './components/SegmentationPanel';
 import AiAssistantPanel from './components/AiAssistantPanel';
 import SafetyModal from './components/SafetyModal';
-import GuidedTour from './components/GuidedTour';
+import GuidedTour, { TourId } from './components/GuidedTour';
 import FloatingToolbar from './components/FloatingToolbar';
 import { TOOLS, MOCK_SEGMENTATION_DATA } from './constants';
 import { Study, Series, ToolMode, ConnectionType, DicomWebConfig, Measurement, SegmentationLayer, ViewerHandle } from './types';
-import { fetchDicomWebSeries, searchDicomWebStudies } from './services/dicomService';
-import { Ruler, Activity, Sparkles, GripVertical, Shield, Loader2, X, Camera, HelpCircle } from 'lucide-react';
+import { fetchDicomWebSeries } from './services/dicomService';
+import { Ruler, Activity, Sparkles, GripVertical, Shield, Loader2, X, Camera, HelpCircle, HardDrive, Map, GraduationCap } from 'lucide-react';
 
 const App: React.FC = () => {
-  // connectionType defaults to DICOMWEB to skip intro
+  // Default to DICOMWEB (which is now effectively Local Mode via the service swap)
   const [connectionType, setConnectionType] = useState<ConnectionType>('DICOMWEB');
   const [showSafetyModal, setShowSafetyModal] = useState(false);
+  const [showTourMenu, setShowTourMenu] = useState(false);
   
-  // Default to Orthanc Demo + Proxy (Most Reliable)
+  // Config is less relevant now, but kept for type compatibility
   const [dicomConfig, setDicomConfig] = useState<DicomWebConfig>({ 
-    url: 'https://demo.orthanc-server.com/dicom-web', 
-    name: 'Orthanc Demo (Europe)',
-    useCorsProxy: true
+    url: 'local', 
+    name: 'Local Dataset (CC0)'
   });
 
   const [selectedStudy, setSelectedStudy] = useState<Study | null>(null);
   const [studySeries, setStudySeries] = useState<Series[]>([]);
   const [activeSeries, setActiveSeries] = useState<Series | null>(null);
   const [activeTool, setActiveTool] = useState<ToolMode>(ToolMode.SCROLL);
-  const [isAutoBooting, setIsAutoBooting] = useState(true);
-  const [bootStatus, setBootStatus] = useState("Connecting to Demo Server...");
+  
+  // No more auto-booting needed for local files
+  const [isAutoBooting, setIsAutoBooting] = useState(false);
   
   const viewerRef = useRef<ViewerHandle>(null);
   
@@ -59,11 +62,13 @@ const App: React.FC = () => {
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   
   // Tour State
-  const [isTourOpen, setIsTourOpen] = useState(false);
+  const [activeTour, setActiveTour] = useState<TourId | null>(null);
+  // Track tour completion to block scrolling until done (only blocks if Quick Tour is running or initial)
+  const [isTourCompleted, setIsTourCompleted] = useState(() => !!localStorage.getItem('viberad.guidedTour.completed'));
 
-  // Floating Toolbar State
+  // FloatingToolbar State
   const [showLegacyToolbar, setShowLegacyToolbar] = useState(false);
-  const [toolbarPos, setToolbarPos] = useState({ x: 0, y: 0 }); 
+  const [toolbarPos, setToolbarPos] = useState({ x: 20, y: 30 }); 
   const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
   const [toolbarOrientation, setToolbarOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
   const dragStartRef = useRef<{ 
@@ -76,10 +81,14 @@ const App: React.FC = () => {
 
   // Center toolbar initially
   useLayoutEffect(() => {
-    if (viewerContainerRef.current) {
+    if (selectedStudy && viewerContainerRef.current) {
         const { clientWidth } = viewerContainerRef.current;
-        // Approx center, slightly down from top
-        setToolbarPos({ x: (clientWidth / 2) - 240, y: 24 });
+        const toolbarWidth = 460; // Approximate max width of toolbar
+        
+        // Calculate centered X, clamped to minimum 20px margin to prevent off-screen rendering
+        const startX = Math.max(20, (clientWidth - toolbarWidth) / 2);
+        
+        setToolbarPos({ x: startX, y: 30 });
         setToolbarOrientation('horizontal');
     }
   }, [selectedStudy]); // Re-center when study loads
@@ -170,85 +179,38 @@ const App: React.FC = () => {
       };
   }, [toolbarPos.x, toolbarPos.y]);
 
-  // Robust Auto-boot logic
-  useEffect(() => {
-    const autoBoot = async () => {
-      // Strategy 1: Orthanc + Proxy
-      try {
-        setBootStatus("Connecting to Orthanc (Proxy)...");
-        const config1 = { 
-            url: 'https://demo.orthanc-server.com/dicom-web', 
-            name: 'Orthanc Demo (Europe)',
-            useCorsProxy: true
-        };
-        setDicomConfig(config1);
-        
-        const studies = await searchDicomWebStudies(config1);
-        if (studies.length > 0) {
-          // Prioritize BRAINIX for the demo as requested
-          const demoStudy = studies.find(s => s.patientName.toUpperCase().includes('BRAINIX')) 
-                         || studies.find(s => s.modality === 'CT' || s.modality === 'MR') 
-                         || studies[0];
-          setSelectedStudy(demoStudy);
-          setIsAutoBooting(false);
-          return;
-        }
-      } catch (e) {
-        console.warn("Orthanc boot failed, retrying with AWS...", e);
-      }
-
-      // Strategy 2: AWS Public (Direct)
-      try {
-         setBootStatus("Retrying with AWS Server...");
-         const config2 = {
-            url: 'https://d3t6nz73tl5kd8.cloudfront.net/dicomweb',
-            name: 'Public AWS Server',
-            useCorsProxy: false
-         };
-         setDicomConfig(config2); // Update state for fallback
-         
-         const studies = await searchDicomWebStudies(config2);
-         if (studies.length > 0) {
-            const demoStudy = studies.find(s => s.patientName.toUpperCase().includes('BRAINIX'))
-                           || studies.find(s => s.modality === 'CT' || s.modality === 'MR') 
-                           || studies[0];
-            setSelectedStudy(demoStudy);
-            setIsAutoBooting(false);
-            return;
-         }
-      } catch (e) {
-         console.error("All auto-boot strategies failed", e);
-      } finally {
-         setIsAutoBooting(false);
-      }
-    };
-    
-    // Slight delay to allow UI to settle
-    const timer = setTimeout(autoBoot, 100);
-    return () => clearTimeout(timer);
-  }, []);
-
   // Guided Tour Logic
   useEffect(() => {
     // Only check if we are actually viewing a study (not on study list)
     if (selectedStudy) {
       const tourCompleted = localStorage.getItem('viberad.guidedTour.completed');
       if (!tourCompleted) {
+        setIsTourCompleted(false); // Lock scrolling
         // Small delay to ensure DOM is ready
-        const timer = setTimeout(() => setIsTourOpen(true), 1500);
+        const timer = setTimeout(() => setActiveTour('quick-start'), 1500);
         return () => clearTimeout(timer);
+      } else {
+        setIsTourCompleted(true);
       }
     }
   }, [selectedStudy]);
 
   const handleCloseTour = () => {
-    setIsTourOpen(false);
-    localStorage.setItem('viberad.guidedTour.completed', 'true');
+    // Only mark completed if we finished the quick start
+    if (activeTour === 'quick-start') {
+        localStorage.setItem('viberad.guidedTour.completed', 'true');
+        setIsTourCompleted(true);
+    }
+    setActiveTour(null);
   };
 
-  const handleRestartTour = () => {
-    localStorage.removeItem('viberad.guidedTour.completed');
-    setIsTourOpen(true);
+  const handleStartTour = (id: TourId) => {
+    if (id === 'quick-start') {
+         localStorage.removeItem('viberad.guidedTour.completed');
+         setIsTourCompleted(false); 
+    }
+    setActiveTour(id);
+    setShowTourMenu(false);
   };
 
   // Global AI Capture State (Lifted)
@@ -284,21 +246,11 @@ const App: React.FC = () => {
         return;
       }
       try {
-        let seriesData: Series[] = [];
-        if (connectionType === 'DICOMWEB') {
-          seriesData = await fetchDicomWebSeries(dicomConfig, selectedStudy.id);
-        }
+        const seriesData = await fetchDicomWebSeries(dicomConfig, selectedStudy.id);
         setStudySeries(seriesData);
         if (seriesData.length > 0) {
-          // Auto-select T1/SE/extrp if available (as requested for Brainix demo)
-          const preferredSeries = seriesData.find(s => s.description === 'T1/SE/extrp');
-          
-          // Fallback to largest series
-          const largestSeries = seriesData.reduce((prev, current) => 
-            (prev.instanceCount > current.instanceCount) ? prev : current
-          );
-          
-          setActiveSeries(preferredSeries || largestSeries);
+          // Default to first series (T1 likely)
+          setActiveSeries(seriesData[0]);
           setActiveRightTab('ai');
         } else {
           setActiveSeries(null);
@@ -312,7 +264,9 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (activeSeries) {
+      // Default slice selection
       setSliceIndex(Math.floor(activeSeries.instanceCount / 2));
+      
       // Measurements are now persisted by series, so we don't clear them here.
       setActiveMeasurementId(null);
       // Reset capture context on series change to avoid stale context
@@ -415,54 +369,76 @@ const App: React.FC = () => {
       <header className="w-full bg-slate-950 border-b border-slate-800 flex-shrink-0 relative z-30">
         <div className="mx-auto flex items-center justify-between px-4 h-14 relative">
           {/* Left: Branding */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-600 shadow-lg shadow-indigo-500/20">
-              <span className="text-xs font-black tracking-tighter text-white">VR</span>
-            </div>
-            <div className="flex flex-col leading-none">
-              <span className="text-sm font-bold text-slate-100 tracking-tight">VibeRad</span>
-              <span className="text-[9px] text-slate-400 font-medium tracking-wide mt-0.5">
-                RADIOLOGY TEACHING
-              </span>
-            </div>
+          <div className="flex flex-col justify-center">
+            <span className="text-lg font-bold text-slate-100 tracking-tight leading-none">VibeRad</span>
+            <span className="text-[10px] font-medium text-indigo-300 tracking-wide mt-0.5">
+              Gemini 3 Pro–Powered MRI Tutor
+            </span>
           </div>
 
-          {/* Center: Disclaimer Pill */}
-          <div className="absolute left-1/2 -translate-x-1/2 hidden md:flex items-center justify-center text-[10px] font-medium text-slate-500 gap-2 bg-slate-900/50 px-3 py-1.5 rounded-full border border-slate-800">
-            <Shield className="w-3 h-3 text-amber-500/80" />
+          {/* Center: Educational Banner */}
+          <div 
+            data-tour-id="safety-banner"
+            className="absolute left-1/2 -translate-x-1/2 hidden md:flex items-center justify-center text-[10px] font-medium text-indigo-200/80 gap-2 bg-indigo-950/40 px-3 py-1.5 rounded-full border border-indigo-500/20 shadow-sm"
+          >
+            <GraduationCap className="w-3.5 h-3.5 text-indigo-400" />
             <span>Educational Demo Only</span>
-            <span className="text-slate-700">•</span>
+            <span className="text-indigo-700/50">•</span>
             <span>Not for Clinical Use</span>
           </div>
 
-          {/* Right: Safety Action */}
-          <button
-            onClick={() => setShowSafetyModal(true)}
-            className="text-[11px] font-medium text-slate-400 hover:text-indigo-300 transition-colors flex items-center gap-1.5"
-          >
-            <Shield className="w-3.5 h-3.5" />
-            <span className="underline underline-offset-2 decoration-slate-700 hover:decoration-indigo-500/50">Safety &amp; Privacy</span>
-          </button>
+          {/* Right: Actions */}
+          <div className="flex items-center gap-2">
+            
+            {/* Tour Menu Button */}
+            <div className="relative">
+                <button
+                    data-tour-id="tours-menu-button"
+                    onClick={() => setShowTourMenu(!showTourMenu)}
+                    className="text-[11px] font-bold text-slate-400 hover:text-white px-3 py-1.5 rounded-full bg-slate-900 border border-slate-700 hover:bg-slate-800 transition-colors flex items-center gap-1.5"
+                >
+                    <Map className="w-3.5 h-3.5 text-purple-400" />
+                    Tours
+                </button>
+                {showTourMenu && (
+                    <>
+                        <div className="fixed inset-0 z-40" onClick={() => setShowTourMenu(false)} />
+                        <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-xl z-50 p-1 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-200">
+                             <div className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-800 mb-1">
+                                 Guided Tours
+                             </div>
+                             <button onClick={() => handleStartTour('quick-start')} className="text-left px-3 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2">
+                                <Sparkles className="w-3.5 h-3.5 text-yellow-400" /> Quick Start
+                             </button>
+                             <button onClick={() => { setActiveRightTab('ai'); handleStartTour('ai-tour'); }} className="text-left px-3 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2">
+                                <Sparkles className="w-3.5 h-3.5 text-purple-400" /> AI Assistant Tour
+                             </button>
+                             <button onClick={() => { setActiveRightTab('segment'); handleStartTour('seg-tour'); }} className="text-left px-3 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2">
+                                <Activity className="w-3.5 h-3.5 text-emerald-400" /> Segmentation Tour
+                             </button>
+                             <button onClick={() => { setActiveRightTab('measure'); handleStartTour('measure-tour'); }} className="text-left px-3 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2">
+                                <Ruler className="w-3.5 h-3.5 text-indigo-400" /> Measurement Tour
+                             </button>
+                        </div>
+                    </>
+                )}
+            </div>
+
+            <button
+                onClick={() => setShowSafetyModal(true)}
+                className="text-[11px] font-medium text-slate-400 hover:text-indigo-300 transition-colors flex items-center gap-1.5 px-2"
+            >
+                <Shield className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline underline underline-offset-2 decoration-slate-700 hover:decoration-indigo-500/50">Safety</span>
+            </button>
+          </div>
         </div>
       </header>
 
       {showSafetyModal && <SafetyModal onClose={() => setShowSafetyModal(false)} />}
       
       {/* Guided Tour Overlay */}
-      {isTourOpen && <GuidedTour isOpen={isTourOpen} onClose={handleCloseTour} />}
-
-      {/* Loading Screen for Auto Boot */}
-      {isAutoBooting && (
-        <div className="fixed inset-0 z-40 bg-slate-950 flex items-center justify-center">
-           <div className="flex flex-col items-center gap-4">
-              <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
-              <div className="text-slate-400 text-sm font-mono flex flex-col items-center">
-                  <span>{bootStatus}</span>
-                  <span className="text-xs text-slate-600 mt-2">Connecting to public DICOMweb node...</span>
-              </div>
-           </div>
-        </div>
-      )}
+      {activeTour && <GuidedTour tourId={activeTour} onClose={handleCloseTour} />}
 
       {!selectedStudy ? (
         <div className="h-full w-full bg-slate-950 overflow-hidden">
@@ -477,48 +453,6 @@ const App: React.FC = () => {
         </div>
       ) : (
         <>
-          {showLegacyToolbar && (
-            <div className="h-14 bg-gray-900 border-b border-gray-800 flex items-center justify-center px-4 flex-shrink-0 z-20">
-                {/* Center Tools */}
-                <div className="flex items-center justify-center gap-3">
-                  {/* Capture Button - Tour Anchor */}
-                  <button
-                      id="tour-capture-button-legacy" 
-                      aria-label="Capture slice for AI assistant"
-                      onClick={performGlobalCapture}
-                      className="p-2 rounded-md flex flex-col items-center justify-center w-24 transition-all text-gray-400 hover:bg-gray-800 hover:text-gray-200 group"
-                      title="Capture current slice"
-                  >
-                      <Camera className="w-5 h-5 mb-1 group-hover:text-white" />
-                      <span className="text-[9px] uppercase font-bold tracking-wider whitespace-nowrap">Capture</span>
-                  </button>
-                  
-                  {/* Divider */}
-                  <div className="w-px h-8 bg-gray-800/50 mx-1" />
-
-                  {TOOLS.map((tool) => {
-                    const Icon = tool.icon;
-                    const isActive = activeTool === tool.id;
-                    return (
-                      <button
-                        key={tool.id}
-                        onClick={() => setActiveTool(tool.id)}
-                        className={`p-2 rounded-md flex flex-col items-center justify-center w-24 transition-all ${
-                          isActive 
-                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50 transform scale-105 z-10' 
-                            : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-                        }`}
-                        title={tool.label}
-                      >
-                        <Icon className="w-5 h-5 mb-1" />
-                        <span className="text-[9px] uppercase font-bold tracking-wider whitespace-nowrap">{tool.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-            </div>
-          )}
-
           <div className="flex-1 flex overflow-hidden">
               <div 
                 ref={viewerContainerRef}
@@ -548,6 +482,7 @@ const App: React.FC = () => {
                     activeMeasurementId={activeMeasurementId}
                     segmentationLayer={segmentationLayer}
                     onSegmentedSliceUpdate={handleSegmentedSliceUpdate}
+                    isScrollEnabled={activeTour === null} // Block scroll if any tour is active
                   />
                   <div className="flex-shrink-0 z-10">
                     <SeriesSelector 
@@ -574,7 +509,7 @@ const App: React.FC = () => {
                       <button onClick={() => setActiveRightTab('measure')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors ${activeRightTab === 'measure' ? 'bg-slate-900 text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'}`}><Ruler className="w-3.5 h-3.5" /> Measure</button>
                       <button onClick={() => { setActiveRightTab('segment'); if (!segmentationLayer.activeSegmentId) setSegmentationLayer(prev => ({ ...prev, activeSegmentId: 1 })); }} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors ${activeRightTab === 'segment' ? 'bg-slate-900 text-emerald-400 border-b-2 border-emerald-500' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'}`}><Activity className="w-3.5 h-3.5" /> Seg</button>
                       <button 
-                          id="tour-ai-tab" // tour anchor
+                          id="tour-ai-tab" // tour anchor for main tour
                           data-tour-id="ai-tab"
                           aria-label="AI Assistant tab"
                           onClick={() => setActiveRightTab('ai')} 
@@ -584,16 +519,6 @@ const App: React.FC = () => {
                       </button>
                   </div>
                   
-                  {/* Quick Tour Link - Subtle and always accessible */}
-                  <div className="bg-slate-950/50 border-b border-slate-800 py-1 flex justify-center">
-                       <button 
-                         onClick={handleRestartTour} 
-                         className="text-[11px] text-slate-500 hover:text-purple-300 underline cursor-pointer flex items-center gap-1.5 transition-colors"
-                       >
-                         <HelpCircle className="w-3 h-3" /> Take a quick tour
-                       </button>
-                  </div>
-
                   <div className="flex-1 overflow-hidden relative">
                      {/* Keep all panels mounted to preserve state (especially AI chat) */}
                      <div className={`absolute inset-0 w-full h-full bg-slate-950 ${activeRightTab === 'measure' ? 'block z-10' : 'hidden'}`}>
@@ -604,6 +529,7 @@ const App: React.FC = () => {
                             onUpdate={handleMeasurementUpdate}
                             onDelete={handleMeasurementDelete}
                             onJumpToSlice={setSliceIndex}
+                            onStartTour={() => handleStartTour('measure-tour')}
                             studyMetadata={{ studyId: selectedStudy.id, patientName: selectedStudy.patientName, description: selectedStudy.description, modality: selectedStudy.modality }}
                           />
                      </div>
@@ -615,6 +541,7 @@ const App: React.FC = () => {
                             onSelectTool={setActiveTool}
                             onClearSegment={handleClearSegment}
                             onJumpToSlice={setSliceIndex}
+                            onStartTour={() => handleStartTour('seg-tour')}
                          />
                      </div>
                      <div className={`absolute inset-0 w-full h-full bg-slate-950 ${activeRightTab === 'ai' ? 'block z-10' : 'hidden'}`}>
@@ -628,6 +555,7 @@ const App: React.FC = () => {
                             cursor={{ seriesInstanceUID: activeSeries?.id || '', frameIndex: sliceIndex, activeMeasurementId: activeMeasurementId }}
                             onJumpToSlice={setSliceIndex}
                             activeSeriesInfo={activeSeries ? { description: activeSeries.description, instanceCount: activeSeries.instanceCount } : undefined}
+                            onStartTour={() => handleStartTour('ai-tour')}
                          />
                      </div>
                   </div>

@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { Measurement } from '../types';
-import { Trash2, Ruler, ArrowRight, Target } from 'lucide-react';
+import { Trash2, Ruler, ArrowRight, Target, HelpCircle } from 'lucide-react';
 
 interface MeasurementPanelProps {
   measurements: Measurement[];
@@ -18,6 +19,7 @@ interface MeasurementPanelProps {
     description: string;
     modality: string;
   };
+  onStartTour?: () => void;
 }
 
 const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
@@ -28,15 +30,25 @@ const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
   onDelete,
   onJumpToSlice,
   pixelSpacing = 0.5, // Default approx if not provided
-  studyMetadata
+  studyMetadata,
+  onStartTour
 }) => {
   return (
     <div className="w-full bg-slate-950 flex flex-col h-full relative">
       {/* Header */}
-      <div className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between">
+      <div data-tour-id="measure-header" className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between">
         <div className="flex items-center gap-2 text-slate-100 font-bold">
           <Ruler className="w-4 h-4 text-indigo-500" />
           <span>Tracking</span>
+          {onStartTour && (
+              <button 
+                  onClick={onStartTour}
+                  className="ml-2 text-[10px] text-indigo-300 hover:text-white flex items-center gap-1 transition-colors"
+                  title="Tour the Measurement panel"
+              >
+                  <HelpCircle className="w-3.5 h-3.5" />
+              </button>
+          )}
         </div>
         <div className="px-2 py-0.5 bg-slate-800 rounded-full text-xs text-slate-400 font-mono">
           {measurements.length}
@@ -44,7 +56,7 @@ const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-3">
+      <div data-tour-id="measure-list" className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-3">
         {measurements.length === 0 ? (
           <div className="text-center mt-10 opacity-40">
             <Target className="w-12 h-12 mx-auto mb-3 text-slate-600" />
@@ -75,9 +87,10 @@ const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
                     <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-indigo-500' : 'bg-yellow-500'}`} />
                     <input
                       type="text"
-                      value={m.label || `Measurement ${idx + 1}`}
+                      value={m.label ?? ''}
+                      placeholder={`Measurement ${idx + 1}`}
                       onChange={(e) => onUpdate(m.id, { label: e.target.value })}
-                      className="bg-transparent text-sm font-medium text-slate-200 focus:outline-none focus:border-b border-indigo-500 w-32"
+                      className="bg-transparent text-sm font-medium text-slate-200 focus:outline-none focus:border-b border-indigo-500 w-32 placeholder:text-slate-600"
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
