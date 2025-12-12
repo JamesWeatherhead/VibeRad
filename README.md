@@ -59,9 +59,12 @@ A built-in **Guided Tour** walks new users through the critical workflow: select
     * **Pro Tip (Spatial Reasoning):** Use the **Paint Tool 🖌️** to draw on a specific structure (e.g., the ventricles). Click **Capture 📸** to update the context, then ask: *"What structure did I just highlight in red?"* (Gemini 3 Pro will interpret your specific segmentation mask).
     * **Deep Think Mode:** Switch to **Deep Think**. Click a complex follow-up (e.g., *"Key structures"*). Gemini 3 Pro will reason deeply to generate a structured teaching explanation.
     * **Search Mode:** Switch to **Search** mode. Ask *"What are the reporting guidelines for this anatomy?"* to see grounded citations.
-* **Deep Think Mode**: Switch to **Deep Think**. Click a complex follow-up (e.g., "Key structures"). Gemini 3 Pro will reason deeply to generate a structured teaching explanation.
-* **Adjust Learner Level**: Change the level to **HS** (High School) or **Resident**. Watch the suggestions and AI persona adapt immediately.
-* **Search Mode**: Switch to **Search** mode. Ask "What are the reporting guidelines for this anatomy?" to see grounded citations.
+
+**Deep Think Mode**: Switch to **Deep Think**. Click a complex follow-up (e.g., "Key structures"). Gemini 3 Pro will reason deeply to generate a structured teaching explanation.
+
+**Adjust Learner Level**: Change the level to **HS** (High School) or **Resident**. Watch the suggestions and AI persona adapt immediately.
+
+**Search Mode**: Switch to **Search** mode. Ask "What are the reporting guidelines for this anatomy?" to see grounded citations.
 
 *All AI interactions run on `gemini-3-pro-preview`. The camera capture is required for multimodal reasoning to ensure the AI analyzes the exact pixel data you are viewing.*
 
