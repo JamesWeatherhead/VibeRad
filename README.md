@@ -9,9 +9,6 @@ The core codebase was generated with Gemini 3 Pro in AI Studio, with human revie
 
 ![VibeRad viewer and AI Assistant](./viberad-screenshot.png)
 
-### 🎥 Demo Video  
-https://youtu.be/Zz3RvK8b1s8
-
 ## The Vibe
 Radiology is notoriously difficult to learn. VibeRad acts as an intelligent teaching assistant beside the student, capable of seeing what they see, reasoning through complex anatomy, and grounding findings in real-world medical guidelines.
 
