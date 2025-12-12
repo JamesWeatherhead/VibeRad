@@ -1,4 +1,5 @@
-
+[![Demo: YouTube](https://img.shields.io/badge/Demo-YouTube-red?logo=youtube&logoColor=white)](https://youtu.be/Zz3RvK8b1s8)
+[![Run: VibeRad App](https://img.shields.io/badge/Run-VibeRad_App-4285F4?logo=google&logoColor=white)](https://ai.studio/apps/drive/1pCMrggBue_gNE9IhzjN-KEdLm8cVPGjW?fullscreenApplet=true)
 
 # VibeRad: Radiology Education Reimagined with Gemini 3 Pro
 
