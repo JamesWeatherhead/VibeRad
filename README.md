@@ -103,7 +103,7 @@ To ensure a high-performance, low-latency experience without requiring a complex
 2. **Data Source:** By default, the app connects to the demo dataset described above.
 3. **Safety:** Upon launch, users must acknowledge the safety disclaimer.
 
-## Hackathon Tracks
+## Hackathon Impact Areas
 - **Education:** Reimagining how medical students and residents learn radiology using adaptive AI personas.
 - **Health:** Improving future patient care by training better doctors with grounded, reasoning-capable AI.
 - **Technology:** Pushing the boundaries of browser-based medical imaging with Gemini 3 Pro.
