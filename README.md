@@ -14,7 +14,7 @@ Radiology is notoriously difficult to learn. VibeRad acts as an intelligent teac
 
 > **Note:** This application is for **EDUCATIONAL USE ONLY**. It uses anonymized demo data and is not a medical device.
 
-**Future directions:** This workflow is modality agnostic. The same Capture 📸 plus tutor loop can extend from brain MRI to CT, X ray, ultrasound, and larger imaging databases.
+**Future directions:** This workflow is modality agnostic. The same Capture 📸 plus tutor loop can extend from brain MRI to CT, X-ray, ultrasound, and larger imaging databases.
 
 ## Key Features
 
