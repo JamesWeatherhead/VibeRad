@@ -5,7 +5,7 @@
 
 **VibeRad** is an AI-powered DICOM viewer and radiology teaching assistant designed to *reimagine learning* and *accelerate discovery*. Built for the **Google DeepMind - Vibe Code with Gemini 3 Pro** Kaggle hackathon, this application bridges the gap between complex medical imaging and accessible education using the latest advancements in reasoning and native multimodality from Gemini 3 Pro.
 
-The core codebase was generated with Gemini 3 Pro, with human review and iteration.
+The core codebase was generated with Gemini 3 Pro in AI Studio, with human review and iteration.
 
 ![VibeRad viewer and AI Assistant](./viberad-screenshot.png)
 
@@ -52,6 +52,7 @@ A built-in **Guided Tour** walks new users through the critical workflow: select
 **3 Steps: (1) Pick a series, (2) capture a slice with the camera, (3) ask VibeRad to teach you what you are seeing.**
 
 **Start VibeRad**: Launch the app. The connection diagnostics will automatically validate the link to the demo data.
+
 * **Step 1 – Pick a series**: Select a brain MRI study. In the bottom "Series browser," select a distinct sequence (e.g., T1/SE/extrp) to load it.
 * **Step 2 – Capture a slice**: Scroll to an anatomical slice of interest. Click the **Camera 📸** button on the floating toolbar. Note the thumbnail appearing in the AI panel.
 * **Step 3 – Ask VibeRad:** Ensure the mode is set to **Chat** and the Teaching Level is set to **Med**.
@@ -59,12 +60,7 @@ A built-in **Guided Tour** walks new users through the critical workflow: select
     * **Pro Tip (Spatial Reasoning):** Use the **Paint Tool 🖌️** to draw on a specific structure (e.g., the ventricles). Click **Capture 📸** to update the context, then ask: *"What structure did I just highlight in red?"* (Gemini 3 Pro will interpret your specific segmentation mask).
     * **Deep Think Mode:** Switch to **Deep Think**. Click a complex follow-up (e.g., *"Key structures"*). Gemini 3 Pro will reason deeply to generate a structured teaching explanation.
     * **Search Mode:** Switch to **Search** mode. Ask *"What are the reporting guidelines for this anatomy?"* to see grounded citations.
-
-**Deep Think Mode**: Switch to **Deep Think**. Click a complex follow-up (e.g., "Key structures"). Gemini 3 Pro will reason deeply to generate a structured teaching explanation.
-
-**Adjust Learner Level**: Change the level to **HS** (High School) or **Resident**. Watch the suggestions and AI persona adapt immediately.
-
-**Search Mode**: Switch to **Search** mode. Ask "What are the reporting guidelines for this anatomy?" to see grounded citations.
+    * **Adjust Learner Level**: Change the level to **HS** (High School) or **Resident**. Watch the suggestions and AI persona adapt immediately.
 
 *All AI interactions run on `gemini-3-pro-preview`. The camera capture is required for multimodal reasoning to ensure the AI analyzes the exact pixel data you are viewing.*
 
