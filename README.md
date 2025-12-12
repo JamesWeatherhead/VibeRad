@@ -6,10 +6,6 @@
 
 The core codebase was generated with Gemini 3 Pro in AI Studio, with human review and iteration, for the 2025 Google DeepMind – Vibe Code with Gemini 3 Pro in AI Studio Kaggle competition.
 
- ## Demo Video
-
-[![Watch the video](https://img.youtube.com/vi/Zz3RvK8b1s8/0.jpg)](https://youtu.be/Zz3RvK8b1s8)
-
 ![VibeRad viewer and AI Assistant](./viberad-screenshot.png)
 
 ## The Vibe
